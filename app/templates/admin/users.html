@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block app_content %}
+<section class="page-section">
+  <div class="section-header">
+    <div>
+      <h1>Users</h1>
+      <p>All users registered under Admin / Mother Company are listed here.</p>
+    </div>
+  </div>
+
+  {% if can_create_admin_user %}
+  <div class="button-row" style="margin-bottom:1rem;">
+    <a class="btn button-auto" href="{{ url_for('admin.create_admin_user') }}">New User</a>
+  </div>
+  {% endif %}
+
+  <div class="form-section-card">
+    <h2>Mother Company Users</h2>
+    <p class="muted">Admin, Finance Manager, Finance Assistant and Regional Manager users created under Martins Funerals South Africa.</p>
+    <div class="table-responsive"><table class="system-report-table users-table user-management-table mother-company-table">
+      <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+      {% for user in mother_company_users %}
+        <tr>
+          <td><strong>{{ user.full_name }}</strong></td>
+          <td>{{ user.email }}</td>
+          <td>{{ user.roles|map(attribute='name')|join(', ') }}</td>
+          <td>{% if user.is_active %}<span class="badge success">Active</span>{% else %}<span class="badge warning">Inactive</span>{% endif %}</td>
+          <td class="action-buttons">
+            <button type="button" class="btn secondary button-auto" onclick="openUserModal('view-user-{{ user.id }}')">View</button>
+            {% if not user.is_protected_admin %}
+              <button type="button" class="btn secondary button-auto" onclick="openUserModal('edit-user-{{ user.id }}')">Edit</button>
+              <form method="post" action="{{ url_for('admin.delete_user', user_id=user.id) }}" style="display:inline" onsubmit="return confirm('Deactivate this user?');"><button class="btn danger button-auto" type="submit">Delete</button></form>
+            {% else %}
+              <span class="badge warning">Locked Admin</span>
+            {% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="center-cell">No mother-company users found.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    <div class="user-management-modals">
+      {% for user in mother_company_users %}
+        {% include 'admin/_user_action_modals.html' %}
+      {% endfor %}
+    </div>
+  </div>
+</section>
+<script>
+function openUserModal(id){
+  const modal = document.getElementById(id);
+  if(modal){ modal.classList.add('is-open'); modal.setAttribute('aria-hidden','false'); }
+}
+function closeUserModal(id){
+  const modal = document.getElementById(id);
+  if(modal){ modal.classList.remove('is-open'); modal.setAttribute('aria-hidden','true'); }
+}
+function toggleEditFranchiseScope(userId){
+  const checked = Array.from(document.querySelectorAll(`#edit-user-${userId} input[name="role_ids"]:checked`)).map(input => input.getAttribute('data-role-name'));
+  const box = document.getElementById(`edit-franchise-scope-${userId}`);
+  if(box){ box.style.display = (checked.includes('Regional Manager') || checked.includes('Franchise User')) ? 'block' : 'none'; }
+}
+document.addEventListener('DOMContentLoaded', function(){
+  document.querySelectorAll('[data-user-edit-id]').forEach(function(item){ toggleEditFranchiseScope(item.getAttribute('data-user-edit-id')); });
+});
+</script>
+{% endblock %}

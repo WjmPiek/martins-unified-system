@@ -1,0 +1,21 @@
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+class Config:
+    SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-me")
+    SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///martins_recovery_not_configured.db")
+    SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    MAIL_SERVER = os.getenv("MAIL_SERVER")
+    MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
+    MAIL_USE_TLS = os.getenv("MAIL_USE_TLS", "true").lower() == "true"
+    MAIL_USERNAME = os.getenv("MAIL_USERNAME")
+    MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
+    MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER")
+    APP_BASE_URL = os.getenv("APP_BASE_URL", "http://127.0.0.1:5000")
+    GOOGLE_MAPS_API_KEY = os.getenv("GOOGLE_MAPS_API_KEY", "")
+
+# MFF Manuals PDF storage. On Render, set MANUALS_STORAGE_ROOT to a persistent disk path.
+MANUALS_STORAGE_ROOT = os.environ.get("MANUALS_STORAGE_ROOT", "")

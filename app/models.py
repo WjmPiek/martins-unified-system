@@ -1,0 +1,1437 @@
+from datetime import datetime, timezone
+import json
+from flask_login import UserMixin
+from werkzeug.security import generate_password_hash, check_password_hash
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from flask import current_app
+from app.extensions import db, login_manager
+
+role_permissions = db.Table(
+    "role_permissions",
+    db.Column("role_id", db.Integer, db.ForeignKey("roles.id"), primary_key=True),
+    db.Column("permission_id", db.Integer, db.ForeignKey("permissions.id"), primary_key=True),
+)
+
+user_roles = db.Table(
+    "user_roles",
+    db.Column("user_id", db.Integer, db.ForeignKey("users.id"), primary_key=True),
+    db.Column("role_id", db.Integer, db.ForeignKey("roles.id"), primary_key=True),
+)
+
+
+user_franchises = db.Table(
+    "user_franchises",
+    db.Column("user_id", db.Integer, db.ForeignKey("users.id"), primary_key=True),
+    db.Column("franchise_id", db.Integer, db.ForeignKey("franchises.id"), primary_key=True),
+    db.Column("is_primary", db.Boolean, default=False, nullable=False),
+)
+class Role(db.Model):
+    __tablename__ = "roles"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), unique=True, nullable=False)
+    description = db.Column(db.String(255))
+    is_system_role = db.Column(db.Boolean, nullable=False, default=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    permissions = db.relationship("Permission", secondary=role_permissions, lazy="subquery", backref=db.backref("roles", lazy=True))
+
+    def has_permission(self, code):
+        # The Role Permissions screen is the single source of truth for every role,
+        # including Admin. If a permission is unticked, that role no longer has it.
+        return any(permission.code == code for permission in self.permissions)
+
+class Permission(db.Model):
+    __tablename__ = "permissions"
+    id = db.Column(db.Integer, primary_key=True)
+    module = db.Column(db.String(120), nullable=False, index=True)
+    action = db.Column(db.String(50), nullable=False, index=True)
+    code = db.Column(db.String(160), unique=True, nullable=False, index=True)
+    label = db.Column(db.String(160), nullable=False)
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+
+class User(UserMixin, db.Model):
+    __tablename__ = "users"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    surname = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    password_hash = db.Column(db.String(255), nullable=False)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    is_active_account = db.Column(db.Boolean, nullable=False, default=True)
+    last_login_at = db.Column(db.DateTime)
+    deactivated_at = db.Column(db.DateTime)
+    deactivation_reason = db.Column(db.String(255), default="")
+    parent_franchise_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    roles = db.relationship("Role", secondary=user_roles, lazy="subquery", backref=db.backref("users", lazy=True))
+    assigned_franchises = db.relationship("Franchise", secondary=user_franchises, lazy="subquery", backref=db.backref("assigned_users", lazy=True))
+    franchise_employees = db.relationship(
+        "User",
+        foreign_keys="User.parent_franchise_user_id",
+        backref=db.backref("parent_franchise_user", remote_side=[id]),
+        lazy=True,
+    )
+    created_users = db.relationship(
+        "User",
+        foreign_keys="User.created_by_user_id",
+        backref=db.backref("created_by_user", remote_side=[id]),
+        lazy=True,
+    )
+
+    @property
+    def full_name(self):
+        return f"{self.name} {self.surname}".strip()
+
+    @property
+    def primary_role_name(self):
+        return self.roles[0].name if self.roles else "No Role"
+
+    @property
+    def is_protected_admin(self):
+        return self.email.lower() == "wjm@martinsdirect.com" or self.full_name.lower() == "wjm piek"
+
+    def ensure_protected_admin_role(self):
+        if not self.is_protected_admin:
+            return
+        admin_role = Role.query.filter_by(name="Admin").first()
+        if admin_role and admin_role not in self.roles:
+            self.roles.append(admin_role)
+
+    def set_password(self, password):
+        self.password_hash = generate_password_hash(password)
+
+    def check_password(self, password):
+        return check_password_hash(self.password_hash, password)
+
+    def accessible_franchises(self):
+        # Global franchise access is controlled by permissions, not hardcoded role names.
+        # Users with Franchise Management view/manage can see all franchises.
+        if self.has_permission("franchise_management:view") or self.has_permission("franchise_management:manage"):
+            return Franchise.query.order_by(Franchise.business_name).all()
+        if self.assigned_franchises:
+            return sorted(self.assigned_franchises, key=lambda item: item.business_name or "")
+        if getattr(self, "franchise", None):
+            return [self.franchise]
+        return []
+
+    def can_access_franchise(self, franchise_id):
+        # Access to an individual franchise follows the same permission model.
+        if self.has_permission("franchise_management:view") or self.has_permission("franchise_management:manage"):
+            return True
+        return any(franchise.id == franchise_id for franchise in self.accessible_franchises())
+
+    def has_role(self, role_name):
+        return any(role.name == role_name for role in self.roles)
+
+    def has_permission(self, code):
+        return any(role.has_permission(code) for role in self.roles)
+
+    def get_reset_token(self):
+        serializer = URLSafeTimedSerializer(current_app.config["SECRET_KEY"])
+        return serializer.dumps(self.email, salt="password-reset-salt")
+
+    @staticmethod
+    def verify_reset_token(token, max_age=1800):
+        serializer = URLSafeTimedSerializer(current_app.config["SECRET_KEY"])
+        try:
+            email = serializer.loads(token, salt="password-reset-salt", max_age=max_age)
+        except (BadSignature, SignatureExpired):
+            return None
+        return User.query.filter_by(email=email).first()
+
+@login_manager.user_loader
+def load_user(user_id):
+    return User.query.get(int(user_id))
+
+class Franchise(db.Model):
+    __tablename__ = "franchises"
+    id = db.Column(db.Integer, primary_key=True)
+    business_name = db.Column(db.String(180), nullable=False, default="")
+    franchise_code = db.Column(db.String(80), default="")
+    ck_business_name = db.Column(db.String(255), default="")
+    ck_number = db.Column(db.String(80), default="")
+    pty_business_name = db.Column(db.String(255), default="")
+    pty_number = db.Column(db.String(80), default="")
+    vat_number = db.Column(db.String(80), default="")
+    office_address = db.Column(db.Text, default="")
+    office_number = db.Column(db.String(80), default="")
+    after_hours_number = db.Column(db.String(80), default="")
+    franchisee_name = db.Column(db.String(120), default="")
+    franchisee_surname = db.Column(db.String(120), default="")
+    franchisee_cell = db.Column(db.String(80), default="")
+    franchisee_email = db.Column(db.String(255), default="")
+    facebook_url = db.Column(db.String(255), default="")
+    instagram_url = db.Column(db.String(255), default="")
+    tiktok_url = db.Column(db.String(255), default="")
+    website_url = db.Column(db.String(255), default="")
+    public_email = db.Column(db.String(255), default="")
+    agreement_start_date = db.Column(db.Date)
+    agreement_end_date = db.Column(db.Date)
+    minimum_royalty_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    royalty_gross_method = db.Column(db.String(20), nullable=False, default="old")
+    imported_royalty_scale_text = db.Column(db.Text, default="")
+    imported_royalty_percentage = db.Column(db.Numeric(5, 2), default=0)
+    province = db.Column(db.String(120), default="", index=True)
+    region = db.Column(db.String(120), default="", index=True)
+    district = db.Column(db.String(120), default="", index=True)
+    municipality = db.Column(db.String(120), default="", index=True)
+    master_import_id = db.Column(db.String(80), default="", index=True)
+    standardized_town = db.Column(db.String(160), default="", index=True)
+    province_code = db.Column(db.String(20), default="", index=True)
+    district_code = db.Column(db.String(20), default="", index=True)
+    municipality_code = db.Column(db.String(30), default="", index=True)
+    regional_manager_email = db.Column(db.String(255), default="")
+    finance_manager_email = db.Column(db.String(255), default="")
+    notification_60_sent_at = db.Column(db.DateTime)
+    notification_30_sent_at = db.Column(db.DateTime)
+    is_performance_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    performance_inactive_at = db.Column(db.DateTime)
+    performance_inactive_reason = db.Column(db.String(255), default="")
+    performance_reactivated_at = db.Column(db.DateTime)
+    performance_reactivated_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    @property
+    def franchisee_full_name(self):
+        return f"{self.franchisee_name} {self.franchisee_surname}".strip()
+
+class AuditLog(db.Model):
+    __tablename__ = "audit_logs"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), index=True)
+    action = db.Column(db.String(160), nullable=False)
+    module = db.Column(db.String(120), nullable=False, index=True)
+    details = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    user = db.relationship("User", backref=db.backref("audit_logs", lazy=True))
+
+class RoyaltyScale(db.Model):
+    __tablename__ = "royalty_scales"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=False, index=True)
+    row_number = db.Column(db.Integer, nullable=False, default=1)
+    amount_from = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    amount_to = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    percentage = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+    franchise = db.relationship("Franchise", backref=db.backref("royalty_scales", lazy=True, cascade="all, delete-orphan"))
+
+
+class MonthlyFigure(db.Model):
+    __tablename__ = "monthly_figures"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=False, index=True)
+    month = db.Column(db.Integer, nullable=False, index=True)
+    year = db.Column(db.Integer, nullable=False, index=True)
+    gross_turnover = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    cash = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    funeral_receipts = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    claim_receipts = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    society_receipts = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    cash_sales = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    tombstone_receipts = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    obo_service_receipts = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    sales = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    insurance_receipts = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    insurance_payover = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    admin_fee = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    insurance_joinings = db.Column(db.Integer, nullable=False, default=0)
+    mf_files = db.Column(db.Integer, nullable=False, default=0)
+    cash_received = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    insurance_received = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    payover = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    other_income = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    number_of_funerals = db.Column(db.Integer, nullable=False, default=0)
+    number_of_policies = db.Column(db.Integer, nullable=False, default=0)
+    number_of_claims = db.Column(db.Integer, nullable=False, default=0)
+    gross_revenue = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    royalty_percentage = db.Column(db.Numeric(5, 2), nullable=False, default=0)
+    royalty_amount = db.Column(db.Numeric(12, 2), nullable=False, default=0)
+    minimum_royalty_applied = db.Column(db.Boolean, nullable=False, default=False)
+    status = db.Column(db.String(30), nullable=False, default="Draft", index=True)
+    notes = db.Column(db.Text, default="")
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"))
+    submitted_at = db.Column(db.DateTime)
+    approved_at = db.Column(db.DateTime)
+    locked_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    franchise = db.relationship("Franchise", backref=db.backref("monthly_figures", lazy=True, cascade="all, delete-orphan"))
+    created_by = db.relationship("User", backref=db.backref("monthly_figures_created", lazy=True))
+
+    @property
+    def period_label(self):
+        return f"{self.year}-{self.month:02d}"
+
+
+
+
+class ImportJob(db.Model):
+    __tablename__ = "import_jobs"
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(80), nullable=False, index=True)
+    filename = db.Column(db.String(255), default="")
+    status = db.Column(db.String(30), nullable=False, default="queued", index=True)
+    message = db.Column(db.String(255), default="")
+    total_steps = db.Column(db.Integer, nullable=False, default=100)
+    current_step = db.Column(db.Integer, nullable=False, default=0)
+    progress_percent = db.Column(db.Integer, nullable=False, default=0)
+    extra_json = db.Column(db.Text, default="")
+
+    # Persistent queue fields added in Phase 7.  The import job row is now both
+    # a progress record and a durable queue item that can survive Render restarts.
+    queue_name = db.Column(db.String(80), nullable=False, default="default", index=True)
+    priority = db.Column(db.Integer, nullable=False, default=100, index=True)
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    max_attempts = db.Column(db.Integer, nullable=False, default=1)
+    available_at = db.Column(db.DateTime, nullable=True, index=True)
+    locked_at = db.Column(db.DateTime, nullable=True, index=True)
+    locked_by = db.Column(db.String(120), nullable=True, index=True)
+    heartbeat_at = db.Column(db.DateTime, nullable=True, index=True)
+    payload_json = db.Column(db.Text, default="")
+    result_json = db.Column(db.Text, default="")
+    error_json = db.Column(db.Text, default="")
+
+    started_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    finished_at = db.Column(db.DateTime)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    created_by = db.relationship("User", backref=db.backref("import_jobs", lazy=True))
+
+    @property
+    def is_active(self):
+        return self.status in {"queued", "running", "processing", "validating", "publishing"}
+
+    @property
+    def payload(self):
+        try:
+            return json.loads(self.payload_json or "{}")
+        except Exception:
+            return {}
+
+    @property
+    def result(self):
+        try:
+            return json.loads(self.result_json or self.extra_json or "{}")
+        except Exception:
+            return {}
+
+
+class ImportJobLog(db.Model):
+    __tablename__ = "import_job_logs"
+    id = db.Column(db.Integer, primary_key=True)
+    import_job_id = db.Column(db.Integer, db.ForeignKey("import_jobs.id"), nullable=False, index=True)
+    level = db.Column(db.String(20), nullable=False, default="info", index=True)
+    message = db.Column(db.String(1000), nullable=False, default="")
+    data_json = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    import_job = db.relationship("ImportJob", backref=db.backref("job_logs", lazy=True, cascade="all, delete-orphan"))
+
+    @property
+    def data(self):
+        try:
+            return json.loads(self.data_json or "{}")
+        except Exception:
+            return {}
+
+
+
+
+class WorkerHeartbeat(db.Model):
+    """Persistent heartbeat for Render/web/CLI job workers.
+
+    This lets the Operations Centre show whether a worker is alive, idle,
+    processing a job, stale, or offline after a Render restart.
+    """
+    __tablename__ = "worker_heartbeats"
+    id = db.Column(db.Integer, primary_key=True)
+    worker_id = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    queue_name = db.Column(db.String(80), nullable=False, default="default", index=True)
+    status = db.Column(db.String(30), nullable=False, default="idle", index=True)
+    current_job_id = db.Column(db.Integer, db.ForeignKey("import_jobs.id"), nullable=True, index=True)
+    hostname = db.Column(db.String(160), default="")
+    process_id = db.Column(db.Integer, nullable=True)
+    last_message = db.Column(db.String(255), default="")
+    started_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    heartbeat_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    stopped_at = db.Column(db.DateTime, nullable=True, index=True)
+
+    current_job = db.relationship("ImportJob", backref=db.backref("worker_heartbeats", lazy=True))
+
+    @property
+    def is_online(self):
+        if not self.heartbeat_at:
+            return False
+        return (datetime.now(timezone.utc) - self.heartbeat_at).total_seconds() < 180
+
+class LiveEvent(db.Model):
+    __tablename__ = "live_events"
+    id = db.Column(db.Integer, primary_key=True)
+    kind = db.Column(db.String(80), nullable=False, default="system", index=True)
+    title = db.Column(db.String(160), nullable=False, default="")
+    message = db.Column(db.String(500), default="")
+    visibility = db.Column(db.String(40), nullable=False, default="admin_finance", index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    import_job_id = db.Column(db.Integer, db.ForeignKey("import_jobs.id"), nullable=True, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    month = db.Column(db.Integer, nullable=True, index=True)
+    year = db.Column(db.Integer, nullable=True, index=True)
+    payload_json = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    user = db.relationship("User", backref=db.backref("live_events", lazy=True))
+    franchise = db.relationship("Franchise", backref=db.backref("live_events", lazy=True))
+    import_job = db.relationship("ImportJob", backref=db.backref("live_events", lazy=True))
+
+    def to_dict(self):
+        try:
+            payload = json.loads(self.payload_json or "{}")
+        except Exception:
+            payload = {}
+        return {
+            "id": self.id,
+            "kind": self.kind,
+            "title": self.title,
+            "message": self.message,
+            "visibility": self.visibility,
+            "franchise_id": self.franchise_id,
+            "franchise": self.franchise.business_name if self.franchise else "",
+            "month": self.month,
+            "year": self.year,
+            "payload": payload,
+            "created_at": self.created_at.isoformat() if self.created_at else "",
+        }
+
+
+class LiveNotification(db.Model):
+    __tablename__ = "live_notifications"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    title = db.Column(db.String(160), nullable=False, default="")
+    message = db.Column(db.String(500), default="")
+    category = db.Column(db.String(40), nullable=False, default="system", index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    import_job_id = db.Column(db.Integer, db.ForeignKey("import_jobs.id"), nullable=True, index=True)
+    payload_json = db.Column(db.Text, default="")
+    read_at = db.Column(db.DateTime, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    user = db.relationship("User", backref=db.backref("live_notifications", lazy=True, cascade="all, delete-orphan"))
+    franchise = db.relationship("Franchise", backref=db.backref("live_notifications", lazy=True))
+    import_job = db.relationship("ImportJob", backref=db.backref("live_notifications", lazy=True))
+
+    def to_dict(self):
+        try:
+            payload = json.loads(self.payload_json or "{}")
+        except Exception:
+            payload = {}
+        return {
+            "id": self.id,
+            "title": self.title,
+            "message": self.message,
+            "category": self.category,
+            "franchise_id": self.franchise_id,
+            "franchise": self.franchise.business_name if self.franchise else "",
+            "import_job_id": self.import_job_id,
+            "payload": payload,
+            "read": self.read_at is not None,
+            "created_at": self.created_at.isoformat() if self.created_at else "",
+        }
+
+
+class FranchiseTarget(db.Model):
+    __tablename__ = "franchise_targets"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=False, index=True)
+    metric = db.Column(db.String(80), nullable=False, index=True)
+    year = db.Column(db.Integer, nullable=False, index=True)
+    month = db.Column(db.Integer, nullable=False, index=True)
+    target_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    franchise = db.relationship("Franchise", backref=db.backref("targets", lazy=True, cascade="all, delete-orphan"))
+    __table_args__ = (
+        db.UniqueConstraint("franchise_id", "metric", "year", "month", name="uq_franchise_target_period_metric"),
+    )
+
+
+class PerformanceGrowthBracket(db.Model):
+    __tablename__ = "performance_growth_brackets"
+    id = db.Column(db.Integer, primary_key=True)
+    metric = db.Column(db.String(80), nullable=False, index=True)
+    amount_from = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    amount_to = db.Column(db.Numeric(14, 2), nullable=True)
+    growth_percent = db.Column(db.Numeric(6, 2), nullable=False, default=0)
+    basis_metric = db.Column(db.String(80), nullable=False, default="cash")
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint("metric", "amount_from", "amount_to", "basis_metric", name="uq_performance_growth_bracket"),
+    )
+
+
+class PerformanceResult(db.Model):
+    __tablename__ = "performance_results"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=False, index=True)
+    metric = db.Column(db.String(80), nullable=False, index=True)
+    year = db.Column(db.Integer, nullable=False, index=True)
+    month = db.Column(db.Integer, nullable=False, index=True)
+    actual_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    target_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    achievement_percent = db.Column(db.Numeric(8, 2), nullable=False, default=0)
+    growth_percent = db.Column(db.Numeric(8, 2), nullable=False, default=0)
+    previous_month_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    same_month_last_year_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    three_year_average_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    forecast_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    source = db.Column(db.String(80), nullable=False, default="monthly_figures")
+    calculated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+    franchise = db.relationship("Franchise", backref=db.backref("performance_results", lazy=True, cascade="all, delete-orphan"))
+    __table_args__ = (
+        db.UniqueConstraint("franchise_id", "metric", "year", "month", name="uq_performance_result_period_metric"),
+    )
+
+
+class HeatmapRecord(db.Model):
+    __tablename__ = "heatmap_records"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    mf_file = db.Column(db.String(120), default="", index=True)
+    deceased_name = db.Column(db.String(120), default="")
+    deceased_surname = db.Column(db.String(120), default="")
+    dod = db.Column(db.String(50), default="")
+    address = db.Column(db.String(255), default="")
+    city = db.Column(db.String(120), default="", index=True)
+    province = db.Column(db.String(120), default="", index=True)
+    country = db.Column(db.String(120), default="South Africa")
+    full_address = db.Column(db.String(512), default="")
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+    weight = db.Column(db.Float, default=1.0)
+    next_of_kin_name = db.Column(db.String(120), default="")
+    next_of_kin_surname = db.Column(db.String(120), default="")
+    relationship = db.Column(db.String(120), default="")
+    relation = db.Column(db.String(50), default="")
+    contact_number = db.Column(db.String(120), default="")
+    source_filename = db.Column(db.String(255), default="")
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    franchise = db.relationship("Franchise", backref=db.backref("heatmap_records", lazy=True, cascade="all, delete-orphan"))
+    created_by = db.relationship("User", backref=db.backref("heatmap_records_created", lazy=True))
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "franchiseId": self.franchise_id,
+            "franchiseName": self.franchise.business_name if self.franchise else "Unassigned",
+            "mfFile": self.mf_file or "",
+            "deceasedName": self.deceased_name or "",
+            "deceasedSurname": self.deceased_surname or "",
+            "dod": self.dod or "",
+            "address": self.address or "",
+            "city": self.city or "",
+            "province": self.province or "",
+            "country": self.country or "South Africa",
+            "fullAddress": self.full_address or "",
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "weight": self.weight if self.weight is not None else 1,
+            "nextOfKinName": self.next_of_kin_name or "",
+            "nextOfKinSurname": self.next_of_kin_surname or "",
+            "relationship": self.relationship or "",
+            "relation": self.relation or "",
+            "contactNumber": self.contact_number or "",
+            "sourceFilename": self.source_filename or "",
+            "updatedAt": self.updated_at.isoformat() if self.updated_at else "",
+        }
+
+
+
+class AttendanceStaff(db.Model):
+    __tablename__ = "attendance_staff"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    first_name = db.Column(db.String(120), nullable=False, default="")
+    surname = db.Column(db.String(120), nullable=False, default="")
+    email = db.Column(db.String(255), default="", index=True)
+    phone = db.Column(db.String(80), default="")
+    id_number = db.Column(db.String(80), default="")
+    employee_number = db.Column(db.String(80), default="", index=True)
+    position = db.Column(db.String(120), default="")
+    staff_type = db.Column(db.String(40), default="Employee", index=True)
+    website_url = db.Column(db.String(255), default="")
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    notes = db.Column(db.Text, default="")
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    franchise = db.relationship("Franchise", backref=db.backref("attendance_staff", lazy=True, cascade="all, delete-orphan"))
+    created_by = db.relationship("User", backref=db.backref("attendance_staff_created", lazy=True))
+
+    @property
+    def full_name(self):
+        return f"{self.first_name} {self.surname}".strip()
+
+
+class AttendanceOffice(db.Model):
+    __tablename__ = "attendance_offices"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    name = db.Column(db.String(160), nullable=False, default="Office")
+    address = db.Column(db.String(255), default="")
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+    allowed_radius_m = db.Column(db.Integer, nullable=False, default=100)
+    qr_token = db.Column(db.String(120), unique=True, nullable=False, index=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    franchise = db.relationship("Franchise", backref=db.backref("attendance_offices", lazy=True, cascade="all, delete-orphan"))
+
+
+class AttendanceEvent(db.Model):
+    __tablename__ = "attendance_events"
+    id = db.Column(db.Integer, primary_key=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey("attendance_staff.id"), nullable=False, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    office_id = db.Column(db.Integer, db.ForeignKey("attendance_offices.id"), nullable=True, index=True)
+    action = db.Column(db.String(20), nullable=False, index=True)  # sign_in or sign_out
+    event_time = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    latitude = db.Column(db.Float)
+    longitude = db.Column(db.Float)
+    accuracy_meters = db.Column(db.Float)
+    distance_from_site_m = db.Column(db.Float)
+    gps_status = db.Column(db.String(50), default="")
+    work_location_type = db.Column(db.String(50), default="Office")
+    source = db.Column(db.String(50), default="web")
+    device_info = db.Column(db.Text, default="")
+    employee_note = db.Column(db.Text, default="")
+    manager_note = db.Column(db.Text, default="")
+    approval_status = db.Column(db.String(30), nullable=False, default="pending", index=True)
+    approved_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    approved_at = db.Column(db.DateTime)
+    rejected_reason = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    staff = db.relationship("AttendanceStaff", backref=db.backref("attendance_events", lazy=True, cascade="all, delete-orphan"))
+    franchise = db.relationship("Franchise")
+    office = db.relationship("AttendanceOffice")
+    approved_by = db.relationship("User")
+
+
+class AttendanceLeaveRequest(db.Model):
+    __tablename__ = "attendance_leave_requests"
+    id = db.Column(db.Integer, primary_key=True)
+    staff_id = db.Column(db.Integer, db.ForeignKey("attendance_staff.id"), nullable=False, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    leave_type = db.Column(db.String(80), nullable=False, default="Annual Leave")
+    start_date = db.Column(db.Date, nullable=False)
+    end_date = db.Column(db.Date, nullable=False)
+    reason = db.Column(db.Text, default="")
+    status = db.Column(db.String(30), nullable=False, default="pending", index=True)
+    manager_note = db.Column(db.Text, default="")
+    decided_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    decided_at = db.Column(db.DateTime)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    staff = db.relationship("AttendanceStaff", backref=db.backref("leave_requests", lazy=True, cascade="all, delete-orphan"))
+    franchise = db.relationship("Franchise")
+    decided_by = db.relationship("User")
+
+class MFFManual(db.Model):
+    __tablename__ = "mff_manuals"
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False, index=True)
+    confidentiality_note = db.Column(db.String(500), default="Confidential - internal use only")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+class MFFManualVersion(db.Model):
+    __tablename__ = "mff_manual_versions"
+    id = db.Column(db.Integer, primary_key=True)
+    manual_id = db.Column(db.Integer, db.ForeignKey("mff_manuals.id"), nullable=False, index=True)
+    version_label = db.Column(db.String(80), nullable=False, default="v1.0")
+    filename = db.Column(db.String(255), nullable=False)
+    content_type = db.Column(db.String(100), nullable=False, default="application/pdf")
+    storage_path = db.Column(db.String(600), nullable=False, default="")
+    sha256 = db.Column(db.String(64), nullable=False, default="")
+    uploaded_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    uploaded_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    is_published = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    manual = db.relationship("MFFManual", backref=db.backref("versions", lazy=True, cascade="all, delete-orphan", order_by="desc(MFFManualVersion.uploaded_at)"))
+    uploaded_by = db.relationship("User")
+    __table_args__ = (db.UniqueConstraint("manual_id", "version_label", name="uq_mff_manual_version_label"),)
+
+class MFFIndexDocument(db.Model):
+    __tablename__ = "mff_index_documents"
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False, index=True)
+    filename = db.Column(db.String(255), nullable=False)
+    storage_path = db.Column(db.String(600), nullable=False, default="")
+    content_type = db.Column(db.String(120), nullable=False, default="application/pdf")
+    manual_id = db.Column(db.Integer, db.ForeignKey("mff_manuals.id"), nullable=True, index=True)
+    uploaded_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    uploaded_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    manual = db.relationship("MFFManual", backref=db.backref("index_documents", lazy=True))
+    uploaded_by = db.relationship("User")
+
+class MFFManualAcknowledgement(db.Model):
+    __tablename__ = "mff_manual_acknowledgements"
+    id = db.Column(db.Integer, primary_key=True)
+    manual_version_id = db.Column(db.Integer, db.ForeignKey("mff_manual_versions.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    attested_name = db.Column(db.String(255), nullable=False)
+    attested_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    ip_address = db.Column(db.String(64), default="")
+    user_agent = db.Column(db.String(500), default="")
+    manual_version = db.relationship("MFFManualVersion")
+    user = db.relationship("User")
+    __table_args__ = (db.UniqueConstraint("manual_version_id", "user_id", name="uq_mff_ack_manual_user"),)
+
+
+
+class InsurancePolicyMonthlyRaw(db.Model):
+    __tablename__ = "insurance_policy_monthly_raw"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    franchise_name = db.Column(db.String(255), nullable=False, index=True)
+    import_month = db.Column(db.Date, nullable=False, index=True)
+    retail_premium = db.Column(db.Numeric(18, 2), default=0)
+    risk_premium = db.Column(db.Numeric(18, 2), default=0)
+    claims = db.Column(db.Numeric(18, 2), default=0)
+    claim_count = db.Column(db.Numeric(18, 2), default=0)
+    claim_paid_franchise = db.Column(db.Numeric(18, 2), default=0)
+    claim_paid_client = db.Column(db.Numeric(18, 2), default=0)
+    repudiated_pending = db.Column(db.Numeric(18, 2), default=0)
+    grand_total_claims = db.Column(db.Numeric(18, 2), default=0)
+    policy_qty = db.Column(db.Numeric(18, 2), default=0)
+    original_risk_premium = db.Column(db.Numeric(18, 2), default=0)
+    r1_policy_fee = db.Column(db.Numeric(18, 2), default=0)
+    underwriter_2_1_fee = db.Column(db.Numeric(18, 2), default=0)
+    risk_after_r1 = db.Column(db.Numeric(18, 2), default=0)
+    single_monthly_premium_total = db.Column(db.Numeric(18, 2), default=0)
+    current_scenario = db.Column(db.String(120), default="100% Claim Ratio")
+    source_file = db.Column(db.String(255), default="")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    franchise = db.relationship("Franchise")
+    __table_args__ = (db.UniqueConstraint("franchise_name", "import_month", name="uq_ins_policy_franchise_month"),)
+
+
+class InsuranceClaimsMonthlyRaw(db.Model):
+    __tablename__ = "insurance_claims_monthly_raw"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    claim_key = db.Column(db.String(255), default="", index=True)
+    claims_franchise_name = db.Column(db.String(255), nullable=False, index=True)
+    claim_month = db.Column(db.Date, nullable=False, index=True)
+    claims_amount = db.Column(db.Numeric(18, 2), default=0)
+    claim_count = db.Column(db.Numeric(18, 2), default=0)
+    claim_paid_franchise = db.Column(db.Numeric(18, 2), default=0)
+    claim_paid_client = db.Column(db.Numeric(18, 2), default=0)
+    repudiated_pending = db.Column(db.Numeric(18, 2), default=0)
+    grand_total_claims = db.Column(db.Numeric(18, 2), default=0)
+    source_file = db.Column(db.String(255), default="")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    franchise = db.relationship("Franchise")
+    __table_args__ = (db.UniqueConstraint("claim_key", "claims_franchise_name", "claim_month", name="uq_ins_claim_key_franchise_month"),)
+
+
+class InsurancePolicyDataDetailRaw(db.Model):
+    __tablename__ = "insurance_policydata_detail_raw"
+    id = db.Column(db.Integer, primary_key=True)
+    source_file = db.Column(db.String(255), nullable=False, index=True)
+    import_month = db.Column(db.Date, nullable=False, index=True)
+    row_number = db.Column(db.Integer, nullable=False)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    franchise_name = db.Column(db.String(255), nullable=False, index=True)
+    relation = db.Column(db.String(80), default="", index=True)
+    is_mem = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    retail_premium = db.Column(db.Numeric(18, 2), default=0)
+    original_risk_premium = db.Column(db.Numeric(18, 2), default=0)
+    mpia = db.Column(db.Numeric(18, 2), default=0)
+    single_premium = db.Column(db.Numeric(18, 6), default=0)
+    r1_policy_fee = db.Column(db.Numeric(18, 2), default=0)
+    adv_fund_2_1_fee = db.Column(db.Numeric(18, 2), default=0)
+    risk_after_r1 = db.Column(db.Numeric(18, 2), default=0)
+    new_risk_premium = db.Column(db.Numeric(18, 2), default=0)
+    raw_data = db.Column(db.JSON)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    franchise = db.relationship("Franchise")
+    __table_args__ = (db.UniqueConstraint("source_file", "import_month", "row_number", name="uq_ins_policydata_source_month_row"),)
+
+
+class InsuranceImportHistory(db.Model):
+    __tablename__ = "insurance_import_history"
+    id = db.Column(db.Integer, primary_key=True)
+    import_type = db.Column(db.String(80), nullable=False, index=True)
+    source_file = db.Column(db.String(255), default="")
+    imported_months = db.Column(db.Text, default="")
+    row_count = db.Column(db.Integer, default=0)
+    status = db.Column(db.String(50), default="success", index=True)
+    message = db.Column(db.Text, default="")
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    created_by = db.relationship("User")
+
+
+class InsuranceFranchiseMapping(db.Model):
+    __tablename__ = "insurance_franchise_mapping"
+    id = db.Column(db.Integer, primary_key=True)
+    source_name = db.Column(db.String(255), nullable=False, unique=True, index=True)
+    mapped_name = db.Column(db.String(255), nullable=False, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    approved = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    franchise = db.relationship("Franchise")
+
+
+class InsuranceClaimCase(db.Model):
+    __tablename__ = "insurance_claim_cases"
+    id = db.Column(db.Integer, primary_key=True)
+    claim_ref = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    franchise_name = db.Column(db.String(255), default="", index=True)
+    claimant_name = db.Column(db.String(255), default="")
+    policy_number = db.Column(db.String(120), default="", index=True)
+    id_number = db.Column(db.String(80), default="")
+    claim_type = db.Column(db.String(120), default="Funeral Claim", index=True)
+    claim_date = db.Column(db.Date, nullable=True, index=True)
+    date_of_death = db.Column(db.Date, nullable=True)
+    claim_amount = db.Column(db.Numeric(18, 2), default=0)
+    status = db.Column(db.String(60), nullable=False, default="Open", index=True)
+    priority = db.Column(db.String(40), default="Normal")
+    assigned_to_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    archived = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    notes = db.Column(db.Text, default="")
+    closed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    franchise = db.relationship("Franchise")
+    assigned_to = db.relationship("User", foreign_keys=[assigned_to_id])
+    created_by = db.relationship("User", foreign_keys=[created_by_id])
+
+
+class InsuranceClaimNote(db.Model):
+    __tablename__ = "insurance_claim_notes"
+    id = db.Column(db.Integer, primary_key=True)
+    claim_id = db.Column(db.Integer, db.ForeignKey("insurance_claim_cases.id"), nullable=False, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    user_email = db.Column(db.String(255), default="")
+    note = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    claim = db.relationship("InsuranceClaimCase", backref=db.backref("claim_notes", lazy=True, cascade="all, delete-orphan", order_by="desc(InsuranceClaimNote.created_at)"))
+    user = db.relationship("User")
+
+
+class InsuranceClaimAttachment(db.Model):
+    __tablename__ = "insurance_claim_attachments"
+    id = db.Column(db.Integer, primary_key=True)
+    claim_id = db.Column(db.Integer, db.ForeignKey("insurance_claim_cases.id"), nullable=False, index=True)
+    filename = db.Column(db.String(255), nullable=False)
+    stored_filename = db.Column(db.String(255), nullable=False)
+    file_path = db.Column(db.String(600), nullable=False)
+    content_type = db.Column(db.String(120), default="")
+    size_bytes = db.Column(db.Integer, default=0)
+    uploaded_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    claim = db.relationship("InsuranceClaimCase", backref=db.backref("attachments", lazy=True, cascade="all, delete-orphan", order_by="desc(InsuranceClaimAttachment.created_at)"))
+    uploaded_by = db.relationship("User")
+
+
+class InsuranceClaimDocumentType(db.Model):
+    __tablename__ = "insurance_claim_document_types"
+    id = db.Column(db.Integer, primary_key=True)
+    document_type = db.Column(db.String(160), nullable=False, unique=True)
+    claim_type = db.Column(db.String(120), default="Funeral Claim")
+    sort_order = db.Column(db.Integer, nullable=False, default=0)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+class InsuranceClaimDocumentRule(db.Model):
+    __tablename__ = "insurance_claim_document_rules"
+    id = db.Column(db.Integer, primary_key=True)
+    document_type_id = db.Column(db.Integer, db.ForeignKey("insurance_claim_document_types.id"), nullable=False, index=True)
+    rule_key = db.Column(db.String(120), nullable=False)
+    rule_value = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    document_type = db.relationship("InsuranceClaimDocumentType", backref=db.backref("rules", lazy=True, cascade="all, delete-orphan"))
+
+
+class PerformanceSnapshot(db.Model):
+    """Frozen monthly performance history for audit/history views.
+
+    Unlike live dashboards, snapshot rows preserve the KPI/target/score values that
+    existed when Head Office captured the month.  This prevents old business
+    history from changing when brackets or formulas are adjusted later.
+    """
+    __tablename__ = "performance_snapshots"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=False, index=True)
+    year = db.Column(db.Integer, nullable=False, index=True)
+    month = db.Column(db.Integer, nullable=False, index=True)
+    metric = db.Column(db.String(80), nullable=False, index=True)
+    actual_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    target_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    achievement_percent = db.Column(db.Numeric(8, 2), nullable=False, default=0)
+    growth_percent = db.Column(db.Numeric(8, 2), nullable=False, default=0)
+    forecast_value = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    rank = db.Column(db.Integer, nullable=False, default=0)
+    previous_rank = db.Column(db.Integer, nullable=False, default=0)
+    movement = db.Column(db.Integer, nullable=False, default=0)
+    health_score = db.Column(db.Numeric(8, 2), nullable=False, default=0)
+    source = db.Column(db.String(80), nullable=False, default="performance_results")
+    captured_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    captured_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+    franchise = db.relationship("Franchise", backref=db.backref("performance_snapshots", lazy=True, cascade="all, delete-orphan"))
+    captured_by = db.relationship("User", backref=db.backref("performance_snapshots_captured", lazy=True))
+
+    __table_args__ = (
+        db.UniqueConstraint("franchise_id", "metric", "year", "month", name="uq_perf_snapshot_period_metric"),
+    )
+
+
+
+
+class PerformancePageCache(db.Model):
+    """Pre-rendered JSON payloads for expensive dashboard/graph data.
+
+    This table is the Phase 5 performance layer. It keeps heavy graph and
+    dashboard payloads out of normal page requests. Imports/recalculation
+    invalidate or rebuild rows; page loads read the latest valid JSON.
+    """
+    __tablename__ = "performance_page_cache"
+    id = db.Column(db.Integer, primary_key=True)
+    cache_type = db.Column(db.String(80), nullable=False, index=True)
+    cache_key = db.Column(db.String(255), nullable=False, index=True)
+    scope_type = db.Column(db.String(40), nullable=False, default="global", index=True)
+    scope_id = db.Column(db.Integer, nullable=True, index=True)
+    year = db.Column(db.Integer, nullable=True, index=True)
+    month = db.Column(db.Integer, nullable=True, index=True)
+    metric = db.Column(db.String(80), nullable=True, index=True)
+    payload_json = db.Column(db.Text, nullable=False, default="{}")
+    row_count = db.Column(db.Integer, nullable=False, default=0)
+    source_version = db.Column(db.String(80), nullable=False, default="phase5")
+    invalidated_at = db.Column(db.DateTime, nullable=True, index=True)
+    built_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    __table_args__ = (
+        db.UniqueConstraint("cache_type", "cache_key", name="uq_performance_page_cache_key"),
+    )
+
+    def to_payload(self):
+        try:
+            return json.loads(self.payload_json or "{}")
+        except Exception:
+            return {}
+
+
+class UserDashboardPreference(db.Model):
+    """Optional per-user dashboard preferences for a cleaner home screen."""
+    __tablename__ = "user_dashboard_preferences"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, unique=True, index=True)
+    default_module = db.Column(db.String(80), nullable=False, default="dashboard")
+    default_metric = db.Column(db.String(80), nullable=False, default="cash")
+    default_date_range = db.Column(db.String(40), nullable=False, default="current_month")
+    show_graphs = db.Column(db.Boolean, nullable=False, default=True)
+    show_leaderboard = db.Column(db.Boolean, nullable=False, default=True)
+    show_insights = db.Column(db.Boolean, nullable=False, default=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship("User", backref=db.backref("dashboard_preference", uselist=False, lazy=True, cascade="all, delete-orphan"))
+
+
+class RoyaltyGrowthProfile(db.Model):
+    """Admin-managed growth policy used by target and royalty snapshots.
+
+    Phase 9 keeps the existing royalty formula intact, but records the growth
+    policy used when targets are generated so calculations are auditable.
+    """
+    __tablename__ = "royalty_growth_profiles"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    source = db.Column(db.String(120), nullable=False, default="SA GDP standard")
+    default_growth_percent = db.Column(db.Numeric(8, 4), nullable=False, default=0)
+    scope_type = db.Column(db.String(40), nullable=False, default="global", index=True)
+    scope_id = db.Column(db.Integer, nullable=True, index=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    notes = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class RoyaltyAgreementProfile(db.Model):
+    """Versioned royalty agreement profile for a franchise.
+
+    This does not change the existing formula by itself. It stores which method
+    should be used for a reporting period and lets the system snapshot the rule
+    that was applied at calculation time.
+    """
+    __tablename__ = "royalty_agreement_profiles"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=False, index=True)
+    agreement_version = db.Column(db.String(80), nullable=False, default="legacy", index=True)
+    formula_version = db.Column(db.String(80), nullable=False, default="current_scale", index=True)
+    royalty_method = db.Column(db.String(20), nullable=False, default="old", index=True)
+    target_method = db.Column(db.String(80), nullable=False, default="previous_year_average_plus_growth")
+    growth_profile_id = db.Column(db.Integer, db.ForeignKey("royalty_growth_profiles.id"), nullable=True, index=True)
+    custom_growth_percent = db.Column(db.Numeric(8, 4), nullable=True)
+    effective_start_date = db.Column(db.Date, nullable=True, index=True)
+    effective_end_date = db.Column(db.Date, nullable=True, index=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    notes = db.Column(db.Text, default="")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    franchise = db.relationship("Franchise", backref=db.backref("royalty_agreement_profiles", lazy=True, cascade="all, delete-orphan"))
+    growth_profile = db.relationship("RoyaltyGrowthProfile", backref=db.backref("agreement_profiles", lazy=True))
+
+
+class RoyaltyCalculationSnapshot(db.Model):
+    """Immutable-style audit snapshot for one monthly royalty calculation."""
+    __tablename__ = "royalty_calculation_snapshots"
+    id = db.Column(db.Integer, primary_key=True)
+    monthly_figure_id = db.Column(db.Integer, db.ForeignKey("monthly_figures.id"), nullable=False, unique=True, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=False, index=True)
+    year = db.Column(db.Integer, nullable=False, index=True)
+    month = db.Column(db.Integer, nullable=False, index=True)
+    agreement_profile_id = db.Column(db.Integer, db.ForeignKey("royalty_agreement_profiles.id"), nullable=True, index=True)
+    agreement_version = db.Column(db.String(80), nullable=False, default="")
+    formula_version = db.Column(db.String(80), nullable=False, default="current_scale")
+    royalty_method = db.Column(db.String(20), nullable=False, default="old")
+    method_source = db.Column(db.String(80), nullable=False, default="")
+    royalty_base = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    royalty_percentage = db.Column(db.Numeric(8, 4), nullable=False, default=0)
+    royalty_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    minimum_royalty_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    minimum_royalty_applied = db.Column(db.Boolean, nullable=False, default=False)
+    scale_source_franchise_id = db.Column(db.Integer, nullable=True, index=True)
+    scale_source_franchise_name = db.Column(db.String(180), nullable=False, default="")
+    growth_profile_id = db.Column(db.Integer, db.ForeignKey("royalty_growth_profiles.id"), nullable=True, index=True)
+    growth_percent = db.Column(db.Numeric(8, 4), nullable=False, default=0)
+    target_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    previous_year_average = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    status = db.Column(db.String(30), nullable=False, default="calculated", index=True)
+    diagnostics_json = db.Column(db.Text, nullable=False, default="{}")
+    calculated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    monthly_figure = db.relationship("MonthlyFigure", backref=db.backref("royalty_snapshot", uselist=False, lazy=True, cascade="all, delete-orphan"))
+    franchise = db.relationship("Franchise", backref=db.backref("royalty_snapshots", lazy=True, cascade="all, delete-orphan"))
+    agreement_profile = db.relationship("RoyaltyAgreementProfile", backref=db.backref("calculation_snapshots", lazy=True))
+    growth_profile = db.relationship("RoyaltyGrowthProfile", backref=db.backref("calculation_snapshots", lazy=True))
+
+    @property
+    def diagnostics(self):
+        try:
+            return json.loads(self.diagnostics_json or "{}")
+        except Exception:
+            return {}
+
+
+class RoyaltyOverride(db.Model):
+    """Admin override audit trail for growth, method or scale-related royalty rules."""
+    __tablename__ = "royalty_overrides"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    override_type = db.Column(db.String(80), nullable=False, index=True)
+    field_name = db.Column(db.String(120), nullable=False, default="")
+    old_value = db.Column(db.String(500), nullable=False, default="")
+    new_value = db.Column(db.String(500), nullable=False, default="")
+    reason = db.Column(db.Text, nullable=False, default="")
+    effective_month = db.Column(db.Integer, nullable=True, index=True)
+    effective_year = db.Column(db.Integer, nullable=True, index=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+    franchise = db.relationship("Franchise", backref=db.backref("royalty_overrides", lazy=True, cascade="all, delete-orphan"))
+    created_by = db.relationship("User", backref=db.backref("royalty_overrides", lazy=True))
+
+
+class FranchiseHealthSnapshot(db.Model):
+    """Business Intelligence health snapshot for one franchise and period.
+
+    Phase 11 is analytical only: it reads monthly figures/royalty snapshots and
+    stores health scoring without changing royalty calculations.
+    """
+    __tablename__ = "franchise_health_snapshots"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=False, index=True)
+    year = db.Column(db.Integer, nullable=False, index=True)
+    month = db.Column(db.Integer, nullable=False, index=True)
+    health_score = db.Column(db.Numeric(8, 2), nullable=False, default=0)
+    health_status = db.Column(db.String(30), nullable=False, default="watch", index=True)
+    gross_turnover = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    previous_gross_turnover = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    growth_percent = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    target_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    target_achievement_percent = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    royalty_amount = db.Column(db.Numeric(14, 2), nullable=False, default=0)
+    royalty_ratio_percent = db.Column(db.Numeric(10, 2), nullable=False, default=0)
+    consecutive_growth_months = db.Column(db.Integer, nullable=False, default=0)
+    consecutive_decline_months = db.Column(db.Integer, nullable=False, default=0)
+    reasons_json = db.Column(db.Text, nullable=False, default="[]")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    franchise = db.relationship("Franchise", backref=db.backref("health_snapshots", lazy=True, cascade="all, delete-orphan"))
+
+    @property
+    def reasons(self):
+        try:
+            return json.loads(self.reasons_json or "[]")
+        except Exception:
+            return []
+
+
+class BusinessInsight(db.Model):
+    """Human-readable insight generated from operational and royalty data."""
+    __tablename__ = "business_insights"
+    id = db.Column(db.Integer, primary_key=True)
+    insight_type = db.Column(db.String(80), nullable=False, index=True)
+    severity = db.Column(db.String(30), nullable=False, default="info", index=True)
+    title = db.Column(db.String(180), nullable=False, default="")
+    message = db.Column(db.Text, nullable=False, default="")
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    year = db.Column(db.Integer, nullable=True, index=True)
+    month = db.Column(db.Integer, nullable=True, index=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    data_json = db.Column(db.Text, nullable=False, default="{}")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    acknowledged_at = db.Column(db.DateTime, nullable=True, index=True)
+    acknowledged_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+
+    franchise = db.relationship("Franchise", backref=db.backref("business_insights", lazy=True, cascade="all, delete-orphan"))
+    acknowledged_by = db.relationship("User", backref=db.backref("acknowledged_business_insights", lazy=True))
+
+    @property
+    def data(self):
+        try:
+            return json.loads(self.data_json or "{}")
+        except Exception:
+            return {}
+
+
+
+class InsightNarrative(db.Model):
+    """Plain-language explanation generated from trusted operational data.
+
+    Phase 12 is explanatory only: it does not change imports, royalties,
+    targets, dashboards or business calculations.  It stores what the system
+    explained, for which period, and the data source category used.
+    """
+    __tablename__ = "insight_narratives"
+    id = db.Column(db.Integer, primary_key=True)
+    narrative_type = db.Column(db.String(80), nullable=False, index=True)
+    title = db.Column(db.String(220), nullable=False, default="")
+    summary = db.Column(db.Text, nullable=False, default="")
+    detail = db.Column(db.Text, nullable=False, default="")
+    severity = db.Column(db.String(30), nullable=False, default="info", index=True)
+    year = db.Column(db.Integer, nullable=True, index=True)
+    month = db.Column(db.Integer, nullable=True, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    province = db.Column(db.String(120), nullable=True, index=True)
+    source = db.Column(db.String(120), nullable=False, default="insights_engine")
+    source_json = db.Column(db.Text, nullable=False, default="{}")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    franchise = db.relationship("Franchise", backref=db.backref("insight_narratives", lazy=True, cascade="all, delete-orphan"))
+
+    @property
+    def source_data(self):
+        try:
+            return json.loads(self.source_json or "{}")
+        except Exception:
+            return {}
+
+
+
+class SystemEvent(db.Model):
+    """Durable enterprise event bus row.
+
+    Phase 8 introduces a database-backed event stream so modules can publish
+    business events without being tightly coupled to each other.  Workers can
+    process, retry and replay events even after a Render restart.
+    """
+    __tablename__ = "system_events"
+    id = db.Column(db.Integer, primary_key=True)
+    event_type = db.Column(db.String(120), nullable=False, index=True)
+    source = db.Column(db.String(120), nullable=False, default="system", index=True)
+    title = db.Column(db.String(180), nullable=False, default="")
+    message = db.Column(db.String(800), default="")
+    status = db.Column(db.String(30), nullable=False, default="pending", index=True)
+    priority = db.Column(db.Integer, nullable=False, default=100, index=True)
+    correlation_id = db.Column(db.String(120), nullable=True, index=True)
+    aggregate_type = db.Column(db.String(80), nullable=True, index=True)
+    aggregate_id = db.Column(db.Integer, nullable=True, index=True)
+    import_job_id = db.Column(db.Integer, db.ForeignKey("import_jobs.id"), nullable=True, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    year = db.Column(db.Integer, nullable=True, index=True)
+    month = db.Column(db.Integer, nullable=True, index=True)
+    payload_json = db.Column(db.Text, nullable=False, default="{}")
+    error_json = db.Column(db.Text, nullable=False, default="")
+    attempts = db.Column(db.Integer, nullable=False, default=0)
+    max_attempts = db.Column(db.Integer, nullable=False, default=3)
+    available_at = db.Column(db.DateTime, nullable=True, index=True)
+    locked_at = db.Column(db.DateTime, nullable=True, index=True)
+    locked_by = db.Column(db.String(120), nullable=True, index=True)
+    processed_at = db.Column(db.DateTime, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    import_job = db.relationship("ImportJob", backref=db.backref("system_events", lazy=True))
+    franchise = db.relationship("Franchise", backref=db.backref("system_events", lazy=True))
+    user = db.relationship("User", backref=db.backref("system_events", lazy=True))
+
+    @property
+    def payload(self):
+        try:
+            return json.loads(self.payload_json or "{}")
+        except Exception:
+            return {}
+
+
+class EventSubscription(db.Model):
+    """Admin-visible registry of which enterprise subsystems consume events."""
+    __tablename__ = "event_subscriptions"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    event_type = db.Column(db.String(120), nullable=False, index=True)
+    handler = db.Column(db.String(160), nullable=False, default="")
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    description = db.Column(db.String(500), default="")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class EventProcessingLog(db.Model):
+    """Permanent processing log for event bus diagnostics and replay."""
+    __tablename__ = "event_processing_logs"
+    id = db.Column(db.Integer, primary_key=True)
+    system_event_id = db.Column(db.Integer, db.ForeignKey("system_events.id"), nullable=False, index=True)
+    handler = db.Column(db.String(160), nullable=False, default="event_bus", index=True)
+    status = db.Column(db.String(30), nullable=False, default="info", index=True)
+    message = db.Column(db.String(1000), nullable=False, default="")
+    data_json = db.Column(db.Text, nullable=False, default="{}")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+    system_event = db.relationship("SystemEvent", backref=db.backref("processing_logs", lazy=True, cascade="all, delete-orphan"))
+
+    @property
+    def data(self):
+        try:
+            return json.loads(self.data_json or "{}")
+        except Exception:
+            return {}
+
+
+class WorkflowDefinition(db.Model):
+    """Reusable workflow definition for enterprise operations.
+
+    Phase 13 stores workflow definitions in PostgreSQL so imports, royalty
+    rebuilds, diagnostics and future modules can share the same workflow,
+    notification, task and audit infrastructure.
+    """
+    __tablename__ = "workflow_definitions"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(160), nullable=False, unique=True, index=True)
+    workflow_key = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    module = db.Column(db.String(120), nullable=False, default="system", index=True)
+    description = db.Column(db.Text, nullable=False, default="")
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    step_template_json = db.Column(db.Text, nullable=False, default="[]")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    @property
+    def step_template(self):
+        try:
+            return json.loads(self.step_template_json or "[]")
+        except Exception:
+            return []
+
+
+class WorkflowInstance(db.Model):
+    """A running or completed workflow instance."""
+    __tablename__ = "workflow_instances"
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_definition_id = db.Column(db.Integer, db.ForeignKey("workflow_definitions.id"), nullable=True, index=True)
+    workflow_key = db.Column(db.String(120), nullable=False, index=True)
+    module = db.Column(db.String(120), nullable=False, default="system", index=True)
+    title = db.Column(db.String(220), nullable=False, default="")
+    status = db.Column(db.String(40), nullable=False, default="pending", index=True)
+    current_step_key = db.Column(db.String(120), nullable=True, index=True)
+    progress_percent = db.Column(db.Integer, nullable=False, default=0)
+    priority = db.Column(db.String(30), nullable=False, default="normal", index=True)
+    import_job_id = db.Column(db.Integer, db.ForeignKey("import_jobs.id"), nullable=True, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    created_by_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    year = db.Column(db.Integer, nullable=True, index=True)
+    month = db.Column(db.Integer, nullable=True, index=True)
+    context_json = db.Column(db.Text, nullable=False, default="{}")
+    message = db.Column(db.String(1000), nullable=False, default="")
+    started_at = db.Column(db.DateTime, nullable=True, index=True)
+    completed_at = db.Column(db.DateTime, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    definition = db.relationship("WorkflowDefinition", backref=db.backref("instances", lazy=True))
+    import_job = db.relationship("ImportJob", backref=db.backref("workflow_instances", lazy=True))
+    franchise = db.relationship("Franchise", backref=db.backref("workflow_instances", lazy=True))
+    created_by = db.relationship("User", foreign_keys=[created_by_user_id], backref=db.backref("created_workflows", lazy=True))
+
+    @property
+    def context(self):
+        try:
+            return json.loads(self.context_json or "{}")
+        except Exception:
+            return {}
+
+
+class WorkflowStep(db.Model):
+    """Instance-specific workflow step state."""
+    __tablename__ = "workflow_steps"
+    id = db.Column(db.Integer, primary_key=True)
+    workflow_instance_id = db.Column(db.Integer, db.ForeignKey("workflow_instances.id"), nullable=False, index=True)
+    step_key = db.Column(db.String(120), nullable=False, index=True)
+    label = db.Column(db.String(220), nullable=False, default="")
+    status = db.Column(db.String(40), nullable=False, default="pending", index=True)
+    sort_order = db.Column(db.Integer, nullable=False, default=0, index=True)
+    message = db.Column(db.String(1000), nullable=False, default="")
+    started_at = db.Column(db.DateTime, nullable=True)
+    completed_at = db.Column(db.DateTime, nullable=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    workflow_instance = db.relationship("WorkflowInstance", backref=db.backref("steps", lazy=True, cascade="all, delete-orphan", order_by="WorkflowStep.sort_order"))
+
+
+class BusinessRule(db.Model):
+    """Configurable business rule used by workflows and diagnostics."""
+    __tablename__ = "business_rules"
+    id = db.Column(db.Integer, primary_key=True)
+    rule_key = db.Column(db.String(140), nullable=False, unique=True, index=True)
+    name = db.Column(db.String(180), nullable=False)
+    module = db.Column(db.String(120), nullable=False, default="system", index=True)
+    severity = db.Column(db.String(30), nullable=False, default="warning", index=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    description = db.Column(db.Text, nullable=False, default="")
+    config_json = db.Column(db.Text, nullable=False, default="{}")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    @property
+    def config(self):
+        try:
+            return json.loads(self.config_json or "{}")
+        except Exception:
+            return {}
+
+
+class EnterpriseTask(db.Model):
+    """Admin/Finance task generated from workflows, rules, imports or diagnostics."""
+    __tablename__ = "enterprise_tasks"
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(220), nullable=False)
+    description = db.Column(db.Text, nullable=False, default="")
+    module = db.Column(db.String(120), nullable=False, default="system", index=True)
+    task_type = db.Column(db.String(80), nullable=False, default="general", index=True)
+    status = db.Column(db.String(40), nullable=False, default="open", index=True)
+    priority = db.Column(db.String(30), nullable=False, default="normal", index=True)
+    assigned_role = db.Column(db.String(120), nullable=True, index=True)
+    assigned_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    workflow_instance_id = db.Column(db.Integer, db.ForeignKey("workflow_instances.id"), nullable=True, index=True)
+    business_rule_id = db.Column(db.Integer, db.ForeignKey("business_rules.id"), nullable=True, index=True)
+    source = db.Column(db.String(120), nullable=False, default="system", index=True)
+    due_at = db.Column(db.DateTime, nullable=True, index=True)
+    completed_at = db.Column(db.DateTime, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    assigned_user = db.relationship("User", foreign_keys=[assigned_user_id], backref=db.backref("enterprise_tasks", lazy=True))
+    franchise = db.relationship("Franchise", backref=db.backref("enterprise_tasks", lazy=True))
+    workflow_instance = db.relationship("WorkflowInstance", backref=db.backref("tasks", lazy=True))
+    business_rule = db.relationship("BusinessRule", backref=db.backref("tasks", lazy=True))
+
+
+class EnterpriseNotification(db.Model):
+    """Role-scoped notification centre entry."""
+    __tablename__ = "enterprise_notifications"
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(220), nullable=False)
+    message = db.Column(db.String(1000), nullable=False, default="")
+    module = db.Column(db.String(120), nullable=False, default="system", index=True)
+    notification_type = db.Column(db.String(80), nullable=False, default="info", index=True)
+    severity = db.Column(db.String(30), nullable=False, default="info", index=True)
+    target_role = db.Column(db.String(120), nullable=True, index=True)
+    target_user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    workflow_instance_id = db.Column(db.Integer, db.ForeignKey("workflow_instances.id"), nullable=True, index=True)
+    system_event_id = db.Column(db.Integer, db.ForeignKey("system_events.id"), nullable=True, index=True)
+    is_read = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    read_at = db.Column(db.DateTime, nullable=True)
+
+    target_user = db.relationship("User", foreign_keys=[target_user_id], backref=db.backref("enterprise_notifications", lazy=True))
+    franchise = db.relationship("Franchise", backref=db.backref("enterprise_notifications", lazy=True))
+    workflow_instance = db.relationship("WorkflowInstance", backref=db.backref("notifications", lazy=True))
+    system_event = db.relationship("SystemEvent", backref=db.backref("enterprise_notifications", lazy=True))
+
+
+class ScheduledJobDefinition(db.Model):
+    """Admin-managed recurring maintenance or reporting job definition."""
+    __tablename__ = "scheduled_job_definitions"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(180), nullable=False, unique=True, index=True)
+    job_key = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    command = db.Column(db.String(220), nullable=False, default="")
+    schedule_text = db.Column(db.String(220), nullable=False, default="Manual")
+    is_active = db.Column(db.Boolean, nullable=False, default=True, index=True)
+    last_run_at = db.Column(db.DateTime, nullable=True, index=True)
+    next_run_at = db.Column(db.DateTime, nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+
+class EnterpriseAuditTimeline(db.Model):
+    """Unified operational timeline across workflows, jobs, events and modules."""
+    __tablename__ = "enterprise_audit_timeline"
+    id = db.Column(db.Integer, primary_key=True)
+    module = db.Column(db.String(120), nullable=False, default="system", index=True)
+    action = db.Column(db.String(160), nullable=False, index=True)
+    title = db.Column(db.String(220), nullable=False, default="")
+    detail = db.Column(db.Text, nullable=False, default="")
+    severity = db.Column(db.String(30), nullable=False, default="info", index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=True, index=True)
+    workflow_instance_id = db.Column(db.Integer, db.ForeignKey("workflow_instances.id"), nullable=True, index=True)
+    import_job_id = db.Column(db.Integer, db.ForeignKey("import_jobs.id"), nullable=True, index=True)
+    system_event_id = db.Column(db.Integer, db.ForeignKey("system_events.id"), nullable=True, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=True, index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
+
+    user = db.relationship("User", backref=db.backref("enterprise_audit_timeline", lazy=True))
+    workflow_instance = db.relationship("WorkflowInstance", backref=db.backref("timeline_entries", lazy=True))
+    import_job = db.relationship("ImportJob", backref=db.backref("timeline_entries", lazy=True))
+    system_event = db.relationship("SystemEvent", backref=db.backref("timeline_entries", lazy=True))
+    franchise = db.relationship("Franchise", backref=db.backref("enterprise_audit_timeline", lazy=True))

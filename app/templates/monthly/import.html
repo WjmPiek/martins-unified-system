@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block app_content %}
+<div class="button-row" style="margin-bottom:1rem;"><a class="btn secondary button-auto" href="{{ url_for('admin.imports_data') }}">Back to Imports & Data</a></div>
+<section class="page-section">
+  <div class="section-header">
+    <div>
+      <h1>Import Month-End Figures PDF</h1>
+      <p class="muted">Upload the monthly figures PDF, select the reporting month/year and allocate it to the correct Franchise Code. The system saves the figures, recalculates royalties, refreshes dashboards/BI/insights and publishes live data automatically.</p>
+    </div>
+    <a class="btn secondary button-auto" href="{{ url_for('monthly.index') }}">Back</a>
+  </div>
+
+  <form method="post" enctype="multipart/form-data" class="professional-form">
+    <div class="form-section-card">
+      <h2>PDF File</h2>
+      <div class="form-grid">
+        <label for="franchise_id">Allocate to Franchise</label>
+        <select id="franchise_id" name="franchise_id" required>
+          {% for franchise in franchises %}
+            <option value="{{ franchise.id }}" {% if selected_franchise and selected_franchise.id == franchise.id %}selected{% endif %}>
+              {{ (franchise.franchise_code ~ ' - ') if franchise.franchise_code else '' }}{{ franchise.business_name or 'Unnamed Franchise' }}
+            </option>
+          {% endfor %}
+        </select>
+
+        <label for="month">Reporting Month</label>
+        <select id="month" name="month" required>
+          <option value="">Choose reporting month...</option>
+          {% for value, label in month_options %}
+            <option value="{{ value }}" {% if default_month == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+
+        <label for="year">Reporting Year</label>
+        <select id="year" name="year" required>
+          <option value="">Choose reporting year...</option>
+          {% for year in year_options %}
+            <option value="{{ year }}" {% if default_year == year %}selected{% endif %}>{{ year }}</option>
+          {% endfor %}
+        </select>
+
+        <label for="pdf_file">Select PDF</label>
+        <input id="pdf_file" name="pdf_file" type="file" accept="application/pdf,.pdf" required>
+      </div>
+      <p class="muted">Franchise Code is the permanent identifier. If the branch is missing or the code is wrong, fix it first in Admin → Data Integrity → Franchise Master.</p>
+    </div>
+
+    <div class="form-section-card">
+      <h2>Automatic workflow</h2>
+      <p class="muted">The selected Reporting Month and Reporting Year are required and are the only source of truth. After upload, the worker validates the import, recalculates royalties, rebuilds performance cache, updates BI/Insights and publishes live results.</p>
+    </div>
+
+    <div class="form-actions sticky-actions no-print">
+      <button class="button-auto" type="submit">Import PDF & Publish Figures</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

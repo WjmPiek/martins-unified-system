@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block app_content %}
+<section class="page-section">
+  <div class="section-header">
+    <div>
+      <h1>Import Report #{{ job.id }}</h1>
+      <p class="muted">{{ job.filename }} · {{ job.kind }} · {{ job.started_at.strftime('%Y-%m-%d %H:%M') if job.started_at else '' }}</p>
+    </div>
+    <a class="btn secondary button-auto" href="{{ url_for('admin.import_centre') }}">Back to Import Centre</a>
+  </div>
+
+  <div class="monthly-summary-grid">
+    <div><span>Status</span><strong>{{ job.status|replace('_',' ')|title }}</strong></div>
+    <div><span>Progress</span><strong>{{ job.progress_percent }}%</strong></div>
+    <div><span>Franchises matched</span><strong>{{ report.matched_franchises|default(0) }}</strong></div>
+    <div><span>Rows saved</span><strong>{{ report.saved_rows|default(0) }}</strong></div>
+    <div><span>Rows recalculated</span><strong>{{ report.recalculated_rows|default(0) }}</strong></div>
+    <div><span>Royalties calculated</span><strong>{{ report.royalties_calculated|default(0) }}</strong></div>
+    <div><span>Performance rows</span><strong>{{ report.performance_rows|default(0) }}</strong></div>
+    <div><span>Figures visible</span><strong>{{ 'Yes' if report.figures_visible else 'No' }}</strong></div>
+    <div><span>Trusted financials</span><strong>{{ 'Yes' if report.trusted_financials else 'No' }}</strong></div>
+  </div>
+</section>
+
+<section class="page-card">
+  <h2>Pipeline result</h2>
+  {% if job.status == 'needs_review' %}
+    <div class="alert alert-warning"><strong>Needs Review:</strong> {{ report.publish_message or job.message }}</div>
+  {% elif job.status == 'completed' %}
+    <div class="alert alert-success"><strong>Completed:</strong> {{ report.publish_message or job.message }}</div>
+  {% else %}
+    <div class="alert"><strong>{{ job.status }}:</strong> {{ job.message }}</div>
+  {% endif %}
+  <p><strong>Period(s):</strong> {{ (report.periods or [])|join(', ') if report else '-' }}</p>
+  <p><strong>Stage:</strong> {{ report.stage|default('-') }}</p>
+</section>
+
+{% if report.errors %}
+<section class="page-card">
+  <h2>Errors</h2>
+  <ul>
+    {% for error in report.errors %}<li>{{ error }}</li>{% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+<section class="page-card">
+  <h2>Review items</h2>
+  <div class="table-responsive compact-table">
+    <table>
+      <thead><tr><th>Franchise / Area</th><th>Issue</th><th>Royalty method</th><th>Scale</th><th>Rows</th></tr></thead>
+      <tbody>
+      {% for item in report.warnings or [] %}
+        <tr>
+          <td>{{ item.franchise }}</td>
+          <td>
+            {% if item.blocking_errors %}<strong>Blocking:</strong> {{ item.blocking_errors|join(', ') }}{% endif %}
+            {% if item.warnings %}{% if item.blocking_errors %}<br>{% endif %}<span>{{ item.warnings|join(', ') }}</span>{% endif %}
+          </td>
+          <td>{{ item.royalty_method or '-' }}{% if item.method_source %}<br><small>{{ item.method_source }}</small>{% endif %}</td>
+          <td>{{ item.scale_count if item.scale_count is defined else '-' }}{% if item.scale_source %}<br><small>{{ item.scale_source }}{% if item.scale_source_franchise %}: {{ item.scale_source_franchise }}{% endif %}</small>{% endif %}</td>
+          <td>
+            {% if item.rows %}
+              {% for row in item.rows[:10] %}
+                <div>{{ row.period }} · {{ row.franchise }} · gross {{ row.gross }}</div>
+              {% endfor %}
+            {% else %}-{% endif %}
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5">No review items. This import reconciled successfully.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+
+
+{% if report.royalty_engine_reviews %}
+<section class="page-card">
+  <h2>Royalty Engine 2.0 reviews</h2>
+  <div class="table-responsive compact-table">
+    <table>
+      <thead><tr><th>Franchise</th><th>Agreement</th><th>Method</th><th>Scale source</th><th>Base</th><th>%</th><th>Royalty</th><th>Review</th></tr></thead>
+      <tbody>
+      {% for item in report.royalty_engine_reviews %}
+        <tr>
+          <td>{{ item.franchise_name }}</td>
+          <td>{{ item.agreement_start_date or '-' }}{% if item.agreement_end_date %} to {{ item.agreement_end_date }}{% endif %}</td>
+          <td>{{ item.method_label }}<br><small>{{ item.method_source }}</small></td>
+          <td>{{ item.scale_source_franchise_name or '-' }}</td>
+          <td>{{ item.royalty_base }}</td>
+          <td>{{ item.royalty_percentage }}%</td>
+          <td>{{ item.royalty_amount }}</td>
+          <td>
+            {% if item.blocking_errors %}<strong>Blocking:</strong> {{ item.blocking_errors|join(', ') }}{% endif %}
+            {% if item.warnings %}{% if item.blocking_errors %}<br>{% endif %}{{ item.warnings|join(', ') }}{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+{% endif %}
+
+<section class="page-card">
+  <h2>What this proves</h2>
+  <ul>
+    <li>The uploaded file was received and processed by the system.</li>
+    <li>Imported branches were matched to franchise records.</li>
+    <li>Agreement dates and royalty scales were checked.</li>
+    <li>Royalty percentages and amounts were recalculated from the current franchise agreement data.</li>
+    <li>Imported figures are visible immediately to Admin/Finance and to the matching franchise user. Graphs, leaderboards and trusted financial summaries are refreshed only when the import completed without blocking review items.</li>
+  </ul>
+</section>
+{% endblock %}

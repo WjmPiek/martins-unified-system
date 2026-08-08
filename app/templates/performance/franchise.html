@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+{% from "performance/_graph_charts.html" import chart_card, graph_assets %}
+
+{% block head_extra %}
+<style>
+.performance-grid,.kpi-card-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem;margin:1rem 0}.kpi-card,.panel-card,.highlight-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:1rem;box-shadow:0 1px 3px rgba(0,0,0,.06)}.kpi-title{font-weight:700;margin-bottom:.35rem}.kpi-percent{font-size:2rem;font-weight:800}.progress-track{height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:.5rem 0}.progress-fill{height:100%;background:#198754}.status-warning .progress-fill{background:#f59f00}.status-danger .progress-fill{background:#dc3545}.status-good{border-left:6px solid #198754}.status-warning{border-left:6px solid #f59f00}.status-danger{border-left:6px solid #dc3545}.insight-list{display:grid;gap:.5rem}.insight{padding:.75rem;border-radius:10px;border-left:5px solid #6c757d;background:#f8f9fa}.insight-good{border-color:#198754}.insight-warning{border-color:#f59f00}.insight-danger{border-color:#dc3545}.small{font-size:.85rem}.button-row{display:flex;gap:.5rem;flex-wrap:wrap}.graph-grid{margin-top:1rem}.simple-chart{display:grid;gap:.75rem}.chart-row{display:grid;grid-template-columns:110px 1fr 70px;gap:.75rem;align-items:center}.chart-label{font-weight:700}.chart-bars{position:relative;background:#eef2f7;border-radius:999px;min-height:30px;overflow:hidden}.target-line{position:absolute;left:.75rem;top:.2rem;font-size:.75rem;color:#6c757d;z-index:2}.bar.actual{min-width:4%;height:30px;border-radius:999px;background:#198754;color:#fff;padding:.4rem .75rem;white-space:nowrap}.chart-percent{text-align:right;font-weight:700}@media(max-width:700px){.chart-row{grid-template-columns:1fr}.chart-percent{text-align:left}}
+</style>
+{{ graph_assets() }}
+{% endblock %}
+
+{% block app_content %}
+<div class="page-header">
+    <div>
+        <h1>{{ franchise.business_name }} Performance Dashboard</h1>
+        <p class="muted">Phase 4: business health, target progress and decision indicators for {{ selected_period_label }}.</p>
+    </div>
+    <div class="button-row">
+        <a class="btn secondary" href="{{ url_for('performance.executive', month=selected_month, year=selected_year, target_mode=target_mode, growth=growth) }}">Executive Dashboard</a>
+        <a class="btn secondary" href="{{ url_for('performance.index', month=selected_month, year=selected_year, target_mode=target_mode, growth=growth) }}">Leaderboard</a>
+        <a class="btn secondary" href="{{ url_for('performance.targets', month=selected_month, year=selected_year) }}">Targets</a>
+    </div>
+</div>
+
+<form class="filter-bar" method="get">
+    <label>Month
+        <select name="month">
+            {% for value, label in month_options %}<option value="{{ value }}" {% if value == selected_month %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+    </label>
+    <label>Year
+        <select name="year">
+            {% for value in year_options %}<option value="{{ value }}" {% if value == selected_year %}selected{% endif %}>{{ value }}</option>{% endfor %}
+        </select>
+    </label>
+    <input type="hidden" name="target_mode" value="{{ target_mode }}">
+    <input type="hidden" name="growth" value="{{ growth }}">
+    <button class="btn" type="submit">Update</button>
+</form>
+<div class="kpi-link-row">
+    {% for key, metric in metrics.items() %}
+        <a class="btn secondary" href="{{ url_for('performance.kpi', metric_key=key, month=selected_month, year=selected_year, target_mode=target_mode, growth=growth) }}">{{ metric.label }}</a>
+    {% endfor %}
+</div>
+
+
+<div class="performance-grid">
+    <div class="highlight-card health-card health-{{ dashboard.health_label|lower|replace(' ', '-') }}">
+        <div class="muted">Business Health</div>
+        <h2>{{ '%.2f'|format(dashboard.health_score) }}/100</h2>
+        <div class="leaderboard-move {{ 'up' if dashboard.health_score >= 90 else 'same' if dashboard.health_score >= 75 else 'down' }}">{{ dashboard.health_label }}</div>
+    </div>
+    {% if dashboard.snapshot %}
+    <div class="highlight-card movement-{{ dashboard.snapshot.movement }}">
+        <div class="muted">Leaderboard Position</div>
+        <h2>#{{ dashboard.snapshot.rank }} of {{ dashboard.snapshot.total }}</h2>
+        <div class="leaderboard-move {{ dashboard.snapshot.movement }}">{{ dashboard.snapshot.movement_label }}{% if dashboard.snapshot.movement_delta %} {{ dashboard.snapshot.movement_delta|abs }}{% endif %}</div>
+    </div>
+    {% endif %}
+</div>
+
+<div class="kpi-card-grid">
+{% for row in dashboard.metrics %}
+    <div class="kpi-card status-{{ row.status }}">
+        <div class="kpi-title">{{ row.label }}</div>
+        <div class="kpi-percent">{{ '%.2f'|format(row.target_percent) }}%</div>
+        <div class="progress-track"><div class="progress-fill" style="width: {{ [row.target_percent, 120]|min }}%"></div></div>
+        <div class="kpi-detail">Actual: {{ row.actual|metric_value(row.metric_key, metrics[row.metric_key].format if row.metric_key in metrics else none) }}</div>
+        <div class="kpi-detail">Target: {{ row.target|metric_value(row.metric_key, metrics[row.metric_key].format if row.metric_key in metrics else none) }}</div>
+        <div class="kpi-detail">Difference: {{ row.target_difference|metric_value(row.metric_key, metrics[row.metric_key].format if row.metric_key in metrics else none) }}</div>
+        <div class="muted small">Growth target {{ '%.2f'|format(row.growth_target_percent) }}% from bracket {{ row.growth_bracket_label }}</div>
+    </div>
+{% endfor %}
+</div>
+
+<div class="panel-card">
+    <h2>Decision Indicators</h2>
+    <div class="insight-list">
+    {% for insight in dashboard.insights %}
+        <div class="insight insight-{{ insight.status }}">{{ insight.text }}</div>
+    {% else %}
+        <p class="muted">No decision indicators yet. Import monthly data and generate targets to activate insights.</p>
+    {% endfor %}
+    </div>
+</div>
+
+
+<div class="panel-card">
+    <h2>Graph Engine</h2>
+    <form class="filter-bar" method="get">
+        <input type="hidden" name="month" value="{{ selected_month }}">
+        <input type="hidden" name="year" value="{{ selected_year }}">
+        <input type="hidden" name="target_mode" value="{{ target_mode }}">
+        <input type="hidden" name="growth" value="{{ growth }}">
+        <label>Graph KPI
+            <select name="chart_metric">
+                {% for key, metric in metrics.items() %}<option value="{{ key }}" {% if key == chart_metric %}selected{% endif %}>{{ metric.label }}</option>{% endfor %}
+            </select>
+        </label>
+        <button class="btn" type="submit">Update Graph</button>
+    </form>
+</div>
+
+{% if graph_data %}
+<div class="panel-card graph-engine-card">
+    <h2>Graph Engine — {{ graph_data.metric_label }}</h2>
+    <p class="muted">Physical SVG graphs generated in the browser from imported monthly/PDF data and targets. The data table is still available under each graph for checking.</p>
+</div>
+
+<div class="grid-two graph-grid">
+    {{ chart_card(
+        graph_data.metric_label ~ ' Actual vs Target',
+        'Compares the imported actual value with the calculated or saved target.',
+        graph_data.actual_vs_target,
+        [{'key':'actual','label':'Actual'}, {'key':'target','label':'Target'}],
+        'R' if graph_data.metric_key in ['cash','sales','insurance'] else '',
+        '',
+        'line'
+    ) }}
+    {{ chart_card(
+        'Previous Year Comparison',
+        'Compares each month with the same month in the previous year.',
+        graph_data.previous_year,
+        [{'key':'actual','label':'This year'}, {'key':'previous_year','label':'Last year'}],
+        'R' if graph_data.metric_key in ['cash','sales','insurance'] else '',
+        '',
+        'line'
+    ) }}
+    {{ chart_card(
+        'Forecast vs Target',
+        'Shows projected performance against the target.',
+        graph_data.forecast,
+        [{'key':'forecast','label':'Forecast'}, {'key':'target','label':'Target'}],
+        'R' if graph_data.metric_key in ['cash','sales','insurance'] else '',
+        '',
+        'line'
+    ) }}
+    {{ chart_card(
+        'Rolling 12-Month Total',
+        'Shows the long-term moving total for this KPI.',
+        graph_data.rolling_12,
+        [{'key':'rolling_total','label':'Rolling 12 months'}],
+        'R' if graph_data.metric_key in ['cash','sales','insurance'] else '',
+        '',
+        'line'
+    ) }}
+</div>
+{% else %}
+<div class="panel-card"><p class="muted">No graph data available yet. Import monthly/PDF figures and generate targets first.</p></div>
+{% endif %}
+
+<div class="table-responsive">
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>KPI</th><th>Actual</th><th>Target</th><th>%</th><th>Previous Month</th><th>Same Month Last Year</th><th>3-Year Avg</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for row in dashboard.metrics %}
+        <tr>
+            <td><strong>{{ row.label }}</strong></td>
+            <td>{{ row.actual|metric_value(row.metric_key, metrics[row.metric_key].format if row.metric_key in metrics else none) }}</td>
+            <td>{{ row.target|metric_value(row.metric_key, metrics[row.metric_key].format if row.metric_key in metrics else none) }}</td>
+            <td>{{ '%.2f'|format(row.target_percent) }}%</td>
+            <td>{{ row.previous_month|metric_value(row.metric_key, metrics[row.metric_key].format if row.metric_key in metrics else none) }}</td>
+            <td>{{ row.same_month_last_year|metric_value(row.metric_key, metrics[row.metric_key].format if row.metric_key in metrics else none) }}</td>
+            <td>{{ row.three_year_average|metric_value(row.metric_key, metrics[row.metric_key].format if row.metric_key in metrics else none) }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endblock %}

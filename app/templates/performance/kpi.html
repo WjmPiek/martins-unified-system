@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% from "performance/_graph_charts.html" import chart_card, graph_assets %}
+{% block head_extra %}
+<style>.graph-grid{margin-top:1rem}.graph-engine-card{border-left:6px solid #0d6efd}.simple-chart{display:grid;gap:.75rem}.chart-row{display:grid;grid-template-columns:110px 1fr 70px;gap:.75rem;align-items:center}.chart-label{font-weight:700}.chart-bars{position:relative;background:#eef2f7;border-radius:999px;min-height:30px;overflow:hidden}.target-line{position:absolute;left:.75rem;top:.2rem;font-size:.75rem;color:#6c757d;z-index:2}.bar.actual{min-width:4%;height:30px;border-radius:999px;background:#198754;color:#fff;padding:.4rem .75rem;white-space:nowrap}.chart-percent{text-align:right;font-weight:700}@media(max-width:700px){.chart-row{grid-template-columns:1fr}.chart-percent{text-align:left}} </style>
+{{ graph_assets() }}
+{% endblock %}
+{% block app_content %}
+<div class="page-header">
+    <div>
+        <h1>{{ summary.metric.label }} Performance</h1>
+        <p class="muted">Dedicated KPI decision page for {{ selected_period_label }}. Uses imported monthly/PDF data, fair targets and current leaderboard position.</p>
+    </div>
+    <div class="button-row">
+        <a class="btn secondary" href="{{ url_for('performance.dashboard', month=selected_month, year=selected_year, target_mode=target_mode, growth=growth) }}">Franchise Dashboard</a>
+        <a class="btn secondary" href="{{ url_for('performance.index', month=selected_month, year=selected_year, metric=metric_key, target_mode=target_mode, growth=growth) }}">Leaderboard</a>
+    </div>
+</div>
+
+<form class="filter-bar" method="get">
+    <label>KPI
+        <select name="metric_redirect" onchange="if(this.value){ window.location='{{ url_for('performance.kpi', metric_key='cash') }}'.replace('cash', this.value) + '?month={{ selected_month }}&year={{ selected_year }}&target_mode={{ target_mode }}&growth={{ growth }}'; }">
+            {% for key, metric in metrics.items() %}<option value="{{ key }}" {% if key == metric_key %}selected{% endif %}>{{ metric.label }}</option>{% endfor %}
+        </select>
+    </label>
+    <label>Month<select name="month">{% for value, label in month_options %}<option value="{{ value }}" {% if value == selected_month %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label>Year<select name="year">{% for value in year_options %}<option value="{{ value }}" {% if value == selected_year %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+    <input type="hidden" name="target_mode" value="{{ target_mode }}">
+    <input type="hidden" name="growth" value="{{ growth }}">
+    <button class="btn" type="submit">Update</button>
+</form>
+
+<div class="kpi-grid">
+    <div class="kpi-card status-{{ summary.status }}">
+        <div class="kpi-label">Actual</div>
+        <div class="kpi-value">{{ summary.total_actual|metric_value(metric_key, metrics[metric_key].format) }}</div>
+        <div class="kpi-detail">Target {{ summary.total_target|metric_value(metric_key, metrics[metric_key].format) }}</div>
+    </div>
+    <div class="kpi-card status-{{ summary.status }}">
+        <div class="kpi-label">Target Achievement</div>
+        <div class="kpi-value">{{ '%.2f'|format(summary.target_percent) }}%</div>
+        <div class="kpi-detail">Difference {{ summary.target_difference|metric_value(metric_key, metrics[metric_key].format) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Previous Month</div>
+        <div class="kpi-value">{{ '%.2f'|format(summary.previous_month_growth) }}%</div>
+        <div class="kpi-detail">Change {{ summary.previous_month_difference|metric_value(metric_key, metrics[metric_key].format) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">Same Month Last Year</div>
+        <div class="kpi-value">{{ '%.2f'|format(summary.last_year_growth) }}%</div>
+        <div class="kpi-detail">Change {{ summary.last_year_difference|metric_value(metric_key, metrics[metric_key].format) }}</div>
+    </div>
+    <div class="kpi-card">
+        <div class="kpi-label">3-Year Average</div>
+        <div class="kpi-value">{{ '%.2f'|format(summary.three_year_growth) }}%</div>
+        <div class="kpi-detail">Change {{ summary.three_year_difference|metric_value(metric_key, metrics[metric_key].format) }}</div>
+    </div>
+</div>
+
+{% if my_row %}
+<div class="highlight-card leaderboard-card movement-{{ my_row.movement }}">
+    <div>
+        <div class="muted">Your / selected franchise {{ summary.metric.label }} position</div>
+        <h2>#{{ my_row.rank }} of {{ summary.rows|length }} — {{ my_row.franchise_name }}</h2>
+    </div>
+    <div class="leaderboard-move {{ my_row.movement }}">{{ my_row.movement_label }}{% if my_row.movement_delta %} by {{ my_row.movement_delta|abs }}{% endif %}</div>
+</div>
+{% endif %}
+
+<div class="panel-card">
+    <h2>12-Month Actual vs Target</h2>
+    <div class="simple-chart">
+        {% for point in chart_data %}
+            {% set pct = point.target_percent if point.target_percent else 0 %}
+            <div class="chart-row">
+                <div class="chart-label">{{ point.label }}</div>
+                <div class="chart-bars">
+                    <div class="target-line">Target {{ point.target|metric_value(metric_key, metrics[metric_key].format) }}</div>
+                    <div class="bar actual" style="width: {{ [pct, 120]|min }}%;">{{ point.actual|metric_value(metric_key, metrics[metric_key].format) }}</div>
+                </div>
+                <div class="chart-percent">{{ '%.0f'|format(pct) }}%</div>
+            </div>
+        {% else %}
+            <p class="muted">No chart data yet for this franchise/KPI.</p>
+        {% endfor %}
+    </div>
+</div>
+
+
+{% if graph_data %}
+<div class="panel-card graph-engine-card">
+    <h2>Graph Engine — {{ graph_data.metric_label }}</h2>
+    <p class="muted">Physical SVG graphs generated in the browser from imported monthly/PDF data and targets. Expand each graph to see the underlying data.</p>
+</div>
+
+<div class="grid-two graph-grid">
+    {{ chart_card(
+        'Actual vs Target',
+        'Imported actual values compared with target values.',
+        graph_data.actual_vs_target,
+        [{'key':'actual','label':'Actual'}, {'key':'target','label':'Target'}],
+        'R' if graph_data.metric_key in ['cash','sales','insurance'] else '',
+        '',
+        'line'
+    ) }}
+    {{ chart_card(
+        'Same Month Previous Year',
+        'This year compared with the same month last year.',
+        graph_data.previous_year,
+        [{'key':'actual','label':'This year'}, {'key':'previous_year','label':'Last year'}],
+        'R' if graph_data.metric_key in ['cash','sales','insurance'] else '',
+        '',
+        'line'
+    ) }}
+    {{ chart_card(
+        'Rolling 12-Month Total',
+        'Long-term moving total for this KPI.',
+        graph_data.rolling_12,
+        [{'key':'rolling_total','label':'Rolling 12 months'}],
+        'R' if graph_data.metric_key in ['cash','sales','insurance'] else '',
+        '',
+        'line'
+    ) }}
+    {{ chart_card(
+        'Forecast vs Target',
+        'Projected month result compared with target.',
+        graph_data.forecast,
+        [{'key':'forecast','label':'Forecast'}, {'key':'target','label':'Target'}],
+        'R' if graph_data.metric_key in ['cash','sales','insurance'] else '',
+        '',
+        'line'
+    ) }}
+</div>
+
+{{ chart_card(
+    'Growth Trend',
+    'Month-on-month / year-on-year growth trend percentage.',
+    graph_data.growth_trend,
+    [{'key':'growth_percent','label':'Growth %'}],
+    '',
+    '%',
+    'line'
+) }}
+{% else %}
+<div class="panel-card"><p class="muted">No graph data available yet for this KPI.</p></div>
+{% endif %}
+
+<div class="grid-two">
+    <div class="panel-card">
+        <h2>Top 10 {{ summary.metric.label }}</h2>
+        <table class="data-table">
+            <thead><tr><th>#</th><th>Franchise</th><th>Movement</th></tr></thead>
+            <tbody>
+            {% for row in summary.top_rows %}
+            <tr>
+                <td><strong>#{{ row.rank }}</strong></td>
+                <td>{{ row.franchise_name }}</td>
+                <td><span class="leaderboard-move {{ row.movement }}">{{ row.movement_label }}{% if row.movement_delta %} by {{ row.movement_delta|abs }}{% endif %}</span></td>
+            </tr>
+            {% else %}<tr><td colspan="3">No data.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <div class="panel-card">
+        <h2>Needs Attention</h2>
+        <table class="data-table">
+            <thead><tr><th>#</th><th>Franchise</th><th>Movement</th></tr></thead>
+            <tbody>
+            {% for row in summary.bottom_rows %}
+            <tr>
+                <td><strong>#{{ row.rank }}</strong></td>
+                <td>{{ row.franchise_name }}</td>
+                <td><span class="leaderboard-move {{ row.movement }}">{{ row.movement_label }}{% if row.movement_delta %} by {{ row.movement_delta|abs }}{% endif %}</span></td>
+            </tr>
+            {% else %}<tr><td colspan="3">No data.</td></tr>{% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

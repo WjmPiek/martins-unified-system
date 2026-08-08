@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% from "performance/_graph_charts.html" import graph_assets %}
+{% block app_content %}
+<section class="page-section performance-graphs-page">
+  <div class="section-header">
+    <div>
+      <h1>Performance Graphs</h1>
+      <p class="muted">The page opens immediately. Graph data loads in the background from the pre-calculated performance cache.</p>
+    </div>
+    <div class="quick-actions">
+      <a class="btn secondary button-auto" href="{{ url_for('performance.index', month=selected_month, year=selected_year) }}">Leaderboard</a>
+    </div>
+  </div>
+
+  <form class="performance-filter-card instant-filter-bar" method="get" id="performanceGraphFilters">
+    <label>Month
+      <select name="month">
+        {% for value, label in month_options %}<option value="{{ value }}" {% if value == selected_month %}selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Year
+      <select name="year">
+        {% for year in year_options %}<option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>{% endfor %}
+      </select>
+    </label>
+    {% if show_combined_option and province_options %}
+    <label>Province
+      <select name="province">
+        <option value="" {% if not selected_province %}selected{% endif %}>All Provinces</option>
+        {% for province in province_options %}
+        <option value="{{ province }}" {% if selected_province == province %}selected{% endif %}>{{ province }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <label>Franchise
+      <select name="franchise_id">
+        {% if show_combined_option %}
+        <option value="all" {% if is_combined_view %}selected{% endif %}>All Franchise Users Combined</option>
+        {% endif %}
+        {% for franchise in franchises %}
+        <option value="{{ franchise.id }}" {% if selected_franchise and selected_franchise.id == franchise.id %}selected{% endif %}>{{ franchise.business_name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label>KPI
+      <select name="metric">
+        {% for key, metric in metrics.items() %}<option value="{{ key }}" {% if key == metric_key %}selected{% endif %}>{{ metric.label }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Period
+      <select name="periods">
+        <option value="6" {% if periods == 6 %}selected{% endif %}>6 months</option>
+        <option value="12" {% if periods == 12 %}selected{% endif %}>12 months</option>
+        <option value="24" {% if periods == 24 %}selected{% endif %}>24 months</option>
+        <option value="36" {% if periods == 36 %}selected{% endif %}>36 months</option>
+      </select>
+    </label>
+    <input type="hidden" name="target_mode" value="{{ target_mode }}">
+    <input type="hidden" name="growth" value="{{ growth }}">
+    <button class="btn button-auto" type="submit">Update Graphs</button>
+  </form>
+
+  <div class="graph-dashboard-title">
+    <h2 id="graphTitle">{{ selected_label }}</h2>
+    <p class="muted" id="graphSubtitle">Loading graph data in the background. You can already use the menu while the data loads.</p>
+  </div>
+
+  <div id="graphLoading" class="panel-card graph-loading-card">
+    <div class="graph-loading-row"><span class="loading-dot"></span><strong>Loading cached graph data...</strong></div>
+    <p class="muted">This reads the prepared analytics cache only. It never rebuilds data while you are using the system.</p>
+  </div>
+  <div id="graphError" class="panel-card graph-error-card" style="display:none;"><p class="muted">Graph data could not load. Try again, or rebuild the performance cache from Admin.</p></div>
+  <div id="graphGrid" class="graph-grid-two" data-money-metrics='["cash","sales","insurance_premiums"]'></div>
+</section>
+
+{{ graph_assets() }}
+<script>
+(function(){
+  var form = document.getElementById('performanceGraphFilters');
+  var grid = document.getElementById('graphGrid');
+  var loading = document.getElementById('graphLoading');
+  var error = document.getElementById('graphError');
+  var title = document.getElementById('graphTitle');
+  var subtitle = document.getElementById('graphSubtitle');
+  var moneyMetrics = JSON.parse(grid.dataset.moneyMetrics || '[]');
+
+  function esc(value){return String(value == null ? '' : value).replace(/[&<>"']/g,function(ch){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch];});}
+  function card(titleText, description, points, series, prefix, suffix, kind){
+    return '<div class="panel-card mfs-chart-card">'
+      + '<div class="mfs-chart-header"><div><h3>'+esc(titleText)+'</h3><p class="muted">'+esc(description)+'</p></div></div>'
+      + '<div class="mfs-svg-chart" data-points="'+esc(JSON.stringify(points || []))+'" data-series="'+esc(JSON.stringify(series || []))+'" data-prefix="'+esc(prefix || '')+'" data-suffix="'+esc(suffix || '')+'" data-kind="'+esc(kind || 'line')+'"><div class="mfs-chart-empty">Loading graph...</div></div>'
+      + '</div>';
+  }
+  function loadGraphs(){
+    loading.style.display = 'block';
+    error.style.display = 'none';
+    grid.innerHTML = '';
+    var params = new URLSearchParams(new FormData(form));
+    fetch('{{ url_for("performance.graphs_data") }}?' + params.toString(), {headers:{'Accept':'application/json'}})
+      .then(function(resp){if(!resp.ok){throw new Error('Graph request failed');} return resp.json();})
+      .then(function(data){
+        loading.style.display = 'none';
+        var g = data.graph_data;
+        if(!g){grid.innerHTML = '<div class="panel-card"><p class="muted">No graph data available yet. Import monthly figures and rebuild the performance cache.</p></div>'; return;}
+        if(g.cache_status === 'missing'){
+          subtitle.textContent = g.message || 'Graph data is being prepared by the administrator.';
+          grid.innerHTML = '<div class="panel-card"><p class="muted">'+esc(g.message || 'Graph data is not ready yet.')+'</p></div>';
+          return;
+        }
+        var prefix = moneyMetrics.indexOf(g.metric_key) >= 0 ? 'R ' : '';
+        title.textContent = g.metric_label + ' - ' + (data.selected_label || 'Selected franchise');
+        subtitle.textContent = 'Selected period ending ' + (data.selected_period_label || '') + '. Target line uses the Admin-controlled South Africa GDP growth standard.';
+        grid.innerHTML = card('Actual vs Target','Shows whether performance is above or below the fair target line.',g.actual_vs_target,[{key:'actual',label:'Actual'},{key:'target',label:'Target'}],prefix,'','line')
+          + card('Compare to Last Year','Compares this year against the same month last year.',g.previous_year,[{key:'actual',label:'This year'},{key:'previous_year',label:'Last year'}],prefix,'','line')
+          + card('Forecast vs Target','Current forecast compared to the target line.',g.forecast,[{key:'forecast',label:'Forecast'},{key:'target',label:'Target'}],prefix,'','line')
+          + card('Growth Trend','Month-on-month growth percentage for the selected KPI.',g.growth_trend,[{key:'growth_percent',label:'Growth %'}],'','%','line');
+        if(window.MFSCharts){window.MFSCharts.renderAll(grid);}
+      })
+      .catch(function(){loading.style.display = 'none'; error.style.display = 'block';});
+  }
+  if(document.readyState === 'loading'){document.addEventListener('DOMContentLoaded', loadGraphs);}else{loadGraphs();}
+})();
+</script>
+<style>/* Performance graph layout is controlled by the V112 global UI system. */</style>
+
+{% endblock %}
