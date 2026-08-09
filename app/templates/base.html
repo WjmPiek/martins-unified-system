@@ -62,7 +62,7 @@
                         {% if current_user.has_permission('performance:view') %}<a href="{{ url_for('performance.index') }}">Leaderboard</a>{% endif %}
                         {% if current_user.has_permission('performance:view') %}<a href="{{ url_for('performance.graphs') }}">Dashboard</a>{% endif %}
                         {% if current_user.has_permission('franchise_employees:view') or current_user.has_permission('franchise_employees:manage') or is_franchise_user %}<a href="{{ url_for('franchise.employees') }}">Employees</a>{% endif %}
-                        {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance.index') }}">Attendance</a>{% endif %}
+                        {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance_launch.launch') }}">Attendance</a>{% endif %}
                         {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}">Heat Map</a>{% endif %}
                         {% if current_user.has_permission('insurance_claims:view') %}<a href="{{ url_for('claims_launch.launch') }}">Claims</a>{% endif %}
                         {% if current_user.has_permission('manuals:view') %}<a href="{{ url_for('manuals.index') }}">Manuals</a>{% endif %}
@@ -72,7 +72,7 @@
 
                         {% if current_user.has_permission('manuals:view') %}<a href="{{ url_for('manuals.index') }}">Manuals</a>{% endif %}
                         {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}">Heat Map</a>{% endif %}
-                        {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance.index') }}">Attendance</a>{% endif %}
+                        {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance_launch.launch') }}">Attendance</a>{% endif %}
 
                         <div class="nav-group-title">Selected Franchise</div>
 
@@ -198,7 +198,7 @@
                             {% if current_user.has_permission('manuals:view') %}<a href="{{ url_for('manuals.index') }}">Manuals</a>{% endif %}
                             {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}">Heat Map</a>{% endif %}
                             {% if current_user.has_permission('insurance_claims:view') and not is_franchise_user %}<a href="{{ url_for('claims_launch.launch') }}">Insurance Claims</a>{% endif %}
-                            {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance.index') }}">Attendance</a>{% endif %}
+                            {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance_launch.launch') }}">Attendance</a>{% endif %}
                         </div>
                     {% endif %}
                 </nav>
