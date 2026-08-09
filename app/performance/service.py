@@ -1538,6 +1538,14 @@ def aggregate_growth_trend_series(franchise_ids, metric_key, end_month, end_year
     return series
 
 
+
+def _normalise_growth_cache_value(growth_percent):
+    """Keep equivalent values such as 1.6 and 1.60 on the same cache key."""
+    try:
+        return f"{Decimal(str(growth_percent)).quantize(Decimal('0.0001')):.4f}"
+    except (ArithmeticError, TypeError, ValueError):
+        return "0.0000"
+
 def graph_engine_payload_for_franchises(franchise_ids, metric_key, month, year, periods=12, mode='growth_bracket', growth_percent=DEFAULT_GROWTH_PERCENT, allow_rebuild=False):
     franchise_ids = filter_active_franchise_ids(franchise_ids or [])
     cache_key = build_cache_key(
@@ -1547,7 +1555,7 @@ def graph_engine_payload_for_franchises(franchise_ids, metric_key, month, year, 
         metric=metric_key,
         franchise_ids=franchise_ids,
         scope='aggregate',
-        extra={'periods': int(periods or 12), 'mode': mode, 'growth': str(growth_percent)},
+        extra={'periods': int(periods or 12), 'mode': mode, 'growth': _normalise_growth_cache_value(growth_percent)},
     )
     cached = get_cached_payload('graph_aggregate', cache_key)
     if cached is not None:
@@ -1589,7 +1597,7 @@ def graph_engine_payload(franchise_id, metric_key, month, year, periods=12, mode
         metric=metric_key,
         franchise_ids=[franchise_id],
         scope='franchise',
-        extra={'periods': int(periods or 12), 'mode': mode, 'growth': str(growth_percent)},
+        extra={'periods': int(periods or 12), 'mode': mode, 'growth': _normalise_growth_cache_value(growth_percent)},
     )
     cached = get_cached_payload('graph_franchise', cache_key)
     if cached is not None:

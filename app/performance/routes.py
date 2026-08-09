@@ -69,17 +69,36 @@ def permission_required(code):
     return decorator
 
 
+
+PERFORMANCE_TARGET_ADMIN_ROLES = {"Admin", "Super Admin"}
+
+
+def can_manage_performance_targets():
+    return current_user.is_authenticated and any(
+        role.name in PERFORMANCE_TARGET_ADMIN_ROLES for role in current_user.roles
+    )
+
+
+def performance_target_admin_required(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        if not can_manage_performance_targets():
+            abort(403)
+        return view_func(*args, **kwargs)
+
+    return wrapped
+
 def request_mode():
     # Franchise users must not see or choose target setup methods.
     # Their portal always uses the Admin-controlled SA GDP growth standard.
-    if current_user.is_authenticated and not current_user.has_permission("performance:manage_targets"):
+    if current_user.is_authenticated and not can_manage_performance_targets():
         return "annual_gross_scale"
     mode = request.args.get("target_mode", "annual_gross_scale")
     return mode if mode in TARGET_MODES else "annual_gross_scale"
 
 
 def request_growth():
-    if current_user.is_authenticated and not current_user.has_permission("performance:manage_targets"):
+    if current_user.is_authenticated and not can_manage_performance_targets():
         return DEFAULT_SA_GDP_GROWTH_PERCENT
     try:
         return Decimal(str(request.args.get("growth", DEFAULT_GROWTH_PERCENT)))
@@ -165,7 +184,7 @@ def index():
         selected_month=month,
         selected_year=year,
         selected_period_label=month_label(month, year),
-        show_manage_targets=current_user.has_permission("performance:manage_targets"),
+        show_manage_targets=can_manage_performance_targets(),
     )
 
 
@@ -354,7 +373,7 @@ def graphs():
         selected_period_label=month_label(scope["month"], scope["year"]),
         province_options=scope["province_options"],
         selected_province=scope["selected_province"],
-        show_manage_targets=current_user.has_permission("performance:manage_targets"),
+        show_manage_targets=can_manage_performance_targets(),
     )
 
 
@@ -376,11 +395,12 @@ def graphs_data():
     # remains responsive while Admin/import work prepares the cache.
 
     if scope["is_combined_view"]:
-        graph_data = graph_engine_payload_for_franchises(ids, metric_key, month, year, periods, mode, growth) if ids else None
+        graph_data = graph_engine_payload_for_franchises(ids, metric_key, month, year, periods, mode, growth, allow_rebuild=True) if ids else None
     else:
         franchise_id = scope["selected_franchise_id"]
-        graph_data = graph_engine_payload(franchise_id, metric_key, month, year, periods, mode, growth) if franchise_id else None
+        graph_data = graph_engine_payload(franchise_id, metric_key, month, year, periods, mode, growth, allow_rebuild=True) if franchise_id else None
 
+    db.session.commit()
     return jsonify({
         "ok": True,
         "selected_label": scope["selected_label"],
@@ -514,6 +534,7 @@ def insights():
 @performance_bp.route("/targets", methods=["GET", "POST"])
 @login_required
 @permission_required("performance:manage_targets")
+@performance_target_admin_required
 def targets():
     month, year = selected_period_from_request(request.values)
     ids = accessible_franchise_ids()
@@ -586,6 +607,7 @@ def targets():
 @performance_bp.route("/targets/generate", methods=["POST"])
 @login_required
 @permission_required("performance:manage_targets")
+@performance_target_admin_required
 def generate_targets():
     month, year = selected_period_from_request(request.form)
     saved = save_growth_bracket_targets(month, year, accessible_franchise_ids())
@@ -597,6 +619,7 @@ def generate_targets():
 @performance_bp.route("/annual-budget", methods=["GET", "POST"])
 @login_required
 @permission_required("performance:manage_targets")
+@performance_target_admin_required
 def annual_budget():
     try:
         target_year = int(request.values.get("year") or selected_period_from_request(request.args)[1])
@@ -640,6 +663,7 @@ def annual_budget():
 @performance_bp.route("/growth-brackets", methods=["GET", "POST"])
 @login_required
 @permission_required("performance:manage_targets")
+@performance_target_admin_required
 def growth_brackets():
     if request.method == "POST":
         updated = 0
@@ -688,6 +712,7 @@ def growth_brackets():
 @performance_bp.route("/recalculate", methods=["POST"])
 @login_required
 @permission_required("performance:manage_targets")
+@performance_target_admin_required
 def recalculate():
     month, year = selected_period_from_request(request.form)
     hidden = auto_hide_inactive_franchises(month, year, accessible_franchise_ids(include_inactive=True), current_user.id)
@@ -700,6 +725,7 @@ def recalculate():
 @performance_bp.route("/recalculate-all", methods=["POST"])
 @login_required
 @permission_required("performance:manage_targets")
+@performance_target_admin_required
 def recalculate_all():
     periods = db.session.query(MonthlyFigure.month, MonthlyFigure.year).distinct().order_by(
         MonthlyFigure.year.asc(), MonthlyFigure.month.asc()
@@ -756,6 +782,7 @@ def history():
 @performance_bp.route("/history/capture", methods=["POST"])
 @login_required
 @permission_required("performance:manage_targets")
+@performance_target_admin_required
 def capture_history():
     month, year = selected_period_from_request(request.form)
     saved = capture_performance_history(month, year, accessible_franchise_ids(), "growth_bracket", DEFAULT_GROWTH_PERCENT, current_user.id)

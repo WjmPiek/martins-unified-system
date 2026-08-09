@@ -39,6 +39,25 @@ def permission_required(code):
     return decorator
 
 
+
+LEADERBOARD_TARGET_ADMIN_ROLES = {"Admin", "Super Admin"}
+
+
+def can_manage_leaderboard_targets():
+    return current_user.is_authenticated and any(
+        role.name in LEADERBOARD_TARGET_ADMIN_ROLES for role in current_user.roles
+    )
+
+
+def leaderboard_target_admin_required(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        if not can_manage_leaderboard_targets():
+            abort(403)
+        return view_func(*args, **kwargs)
+
+    return wrapped
+
 def selected_period():
     now = datetime.now()
     try:
@@ -278,13 +297,14 @@ def index():
         comparison_period_label=month_label(prev_month, prev_year),
         compare_to=compare_to,
         metrics=METRICS,
-        show_manage_targets=current_user.has_permission("leaderboard:manage_targets"),
+        show_manage_targets=can_manage_leaderboard_targets(),
     )
 
 
 @leaderboard_bp.route("/targets", methods=["GET", "POST"])
 @login_required
 @permission_required("leaderboard:manage_targets")
+@leaderboard_target_admin_required
 def targets():
     month, year = selected_period()
     franchise_ids = accessible_franchise_ids()
