@@ -1,4 +1,4 @@
-from flask import Flask, g, request, url_for
+﻿from flask import Flask, g, request, url_for
 import click
 import logging
 import time
@@ -73,7 +73,7 @@ def create_app(config_class=Config):
     from app.attendance.routes import attendance_bp
     from app.manuals.routes import manuals_bp
     from app.insurance_claims.routes import insurance_claims_bp
-from app.claims_launch.routes import claims_launch_bp
+    from app.claims_launch.routes import claims_launch_bp
     from app.leaderboard.routes import leaderboard_bp
     from app.performance.routes import performance_bp
     from app.live import live_bp
@@ -462,3 +462,4 @@ from app.claims_launch.routes import claims_launch_bp
         print("v100 platform stabilization complete.")
 
     return app
+
