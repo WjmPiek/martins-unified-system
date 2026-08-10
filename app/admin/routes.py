@@ -554,7 +554,7 @@ def franchise_users():
     return render_template(
         "admin/franchise_users.html",
         franchise_users=franchise_users,
-        roles=Role.query.filter(Role.name.in_(['Franchise User', 'Claims Access', 'Heat Map Access', 'Attendance Access'])).order_by(Role.name).all(),
+        roles=Role.query.filter(Role.name.in_(["Franchise User"])).order_by(Role.name).all(),
         franchises=franchises,
         can_assign_franchise_links=can_assign_franchise_links(),
     )
