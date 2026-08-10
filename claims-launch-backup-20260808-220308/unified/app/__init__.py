@@ -1,5 +1,4 @@
-from flask import Flask, abort, g, request, url_for
-from flask_login import current_user
+from flask import Flask, g, request, url_for
 import click
 import logging
 import time
@@ -7,7 +6,6 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from config import Config
 from app.extensions import db, migrate, login_manager, mail
-from app.module_access import has_module_access
 
 
 def create_app(config_class=Config):
@@ -29,24 +27,6 @@ def create_app(config_class=Config):
     @app.before_request
     def start_request_timer():
         g.request_started_at = time.perf_counter()
-
-    @app.before_request
-    def enforce_module_access():
-        if not current_user.is_authenticated:
-            return None
-
-        endpoint = request.endpoint or ""
-        protected_modules = (
-            (("claims_launch.", "insurance_claims."), "claims"),
-            (("attendance_launch.", "attendance."), "attendance"),
-            (("heatmap.",), "heat_map"),
-        )
-        for endpoint_prefixes, module_key in protected_modules:
-            if endpoint.startswith(endpoint_prefixes) and not has_module_access(
-                current_user, module_key
-            ):
-                abort(403)
-        return None
 
     @app.after_request
     def record_request_timing(response):
@@ -93,8 +73,6 @@ def create_app(config_class=Config):
     from app.attendance.routes import attendance_bp
     from app.manuals.routes import manuals_bp
     from app.insurance_claims.routes import insurance_claims_bp
-    from app.claims_launch.routes import claims_launch_bp
-    from app.attendance_launch.routes import attendance_launch_bp
     from app.leaderboard.routes import leaderboard_bp
     from app.performance.routes import performance_bp
     from app.live import live_bp
@@ -109,8 +87,6 @@ def create_app(config_class=Config):
     app.register_blueprint(attendance_bp)
     app.register_blueprint(manuals_bp)
     app.register_blueprint(insurance_claims_bp)
-    app.register_blueprint(claims_launch_bp)
-    app.register_blueprint(attendance_launch_bp)
     app.register_blueprint(leaderboard_bp)
     app.register_blueprint(performance_bp)
     app.register_blueprint(live_bp)
@@ -152,7 +128,6 @@ def create_app(config_class=Config):
             "brand_logo_url": _static_asset_url("img/logo.png"),
             "brand_logo_fallback_url": _static_asset_url("img/logo-placeholder.svg"),
             "asset_url": _static_asset_url,
-            "has_module_access": has_module_access,
         }
 
     @app.context_processor
@@ -485,4 +460,3 @@ def create_app(config_class=Config):
         print("v100 platform stabilization complete.")
 
     return app
-

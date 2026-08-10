@@ -62,17 +62,17 @@
                         {% if current_user.has_permission('performance:view') %}<a href="{{ url_for('performance.index') }}">Leaderboard</a>{% endif %}
                         {% if current_user.has_permission('performance:view') %}<a href="{{ url_for('performance.graphs') }}">Dashboard</a>{% endif %}
                         {% if current_user.has_permission('franchise_employees:view') or current_user.has_permission('franchise_employees:manage') or is_franchise_user %}<a href="{{ url_for('franchise.employees') }}">Employees</a>{% endif %}
-                        {% if has_module_access(current_user, 'attendance') %}<a href="{{ url_for('attendance_launch.launch') }}">Attendance</a>{% endif %}
-                        {% if has_module_access(current_user, 'heat_map') %}<a href="{{ url_for('heatmap.index') }}">Heat Map</a>{% endif %}
-                        {% if has_module_access(current_user, 'claims') %}<a href="{{ url_for('claims_launch.launch') }}">Claims</a>{% endif %}
+                        {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance.index') }}">Attendance</a>{% endif %}
+                        {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}">Heat Map</a>{% endif %}
+                        {% if current_user.has_permission('insurance_claims:view') %}<a href="{{ url_for('insurance_claims.index') }}">Claims</a>{% endif %}
                         {% if current_user.has_permission('manuals:view') %}<a href="{{ url_for('manuals.index') }}">Manuals</a>{% endif %}
                     {% elif privileged_user and franchise_view_mode %}
                         <div class="nav-group-title">Admin</div>
                         <a href="{{ url_for('dashboard.main_dashboard') }}">Back to Main Dashboard</a>
 
                         {% if current_user.has_permission('manuals:view') %}<a href="{{ url_for('manuals.index') }}">Manuals</a>{% endif %}
-                        {% if has_module_access(current_user, 'heat_map') %}<a href="{{ url_for('heatmap.index') }}">Heat Map</a>{% endif %}
-                        {% if has_module_access(current_user, 'attendance') %}<a href="{{ url_for('attendance_launch.launch') }}">Attendance</a>{% endif %}
+                        {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}">Heat Map</a>{% endif %}
+                        {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance.index') }}">Attendance</a>{% endif %}
 
                         <div class="nav-group-title">Selected Franchise</div>
 
@@ -134,14 +134,6 @@
                         </details>
                         {% endif %}
 
-                                                {% if has_module_access(current_user, 'claims') %}
-                        <details class="nav-section nav-domain" open>
-                            <summary><span class="nav-icon">C</span><span><strong>Insurance Claims</strong><small>Premiums, claims and risk analysis</small></span></summary>
-                            <div class="nav-subtabs">
-                                <a href="{{ url_for('claims_launch.launch') }}">Open Claims Workspace <small>Full claims dashboard and operations</small></a>
-                            </div>
-                        </details>
-                        {% endif %}
                         {% if current_user.has_permission('franchise_management:view') and (is_admin_user or is_finance_user) %}
                         <details class="nav-section nav-domain" open>
                             <summary><span class="nav-icon">◎</span><span><strong>Franchise Intelligence</strong><small>Health, growth and risk</small></span></summary>
@@ -196,9 +188,9 @@
 
                         <div class="nav-utility-links">
                             {% if current_user.has_permission('manuals:view') %}<a href="{{ url_for('manuals.index') }}">Manuals</a>{% endif %}
-                            {% if has_module_access(current_user, 'heat_map') %}<a href="{{ url_for('heatmap.index') }}">Heat Map</a>{% endif %}
-                            {% if has_module_access(current_user, 'claims') and not is_franchise_user %}<a href="{{ url_for('claims_launch.launch') }}">Insurance Claims</a>{% endif %}
-                            {% if has_module_access(current_user, 'attendance') %}<a href="{{ url_for('attendance_launch.launch') }}">Attendance</a>{% endif %}
+                            {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}">Heat Map</a>{% endif %}
+                            {% if current_user.has_permission('insurance_claims:view') and not is_franchise_user %}<a href="{{ url_for('insurance_claims.index') }}">Insurance Claims</a>{% endif %}
+                            {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance.index') }}">Attendance</a>{% endif %}
                         </div>
                     {% endif %}
                 </nav>

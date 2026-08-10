@@ -1,0 +1,48 @@
+MARTINS ROYALTY-ONLY ROLLBACK
+
+This package removes the integrated Manuals, Attendance, Heat Map, and
+Insurance Claims modules from the application while keeping the original
+royalty system.
+
+KEPT
+- Login and users
+- Business Overview
+- Franchise users and linked/grouped franchises
+- Monthly figures and imports
+- Performance graphs, analytics, targets, and history
+- Royalties, grouped calculations, approvals, locking, and PDF exports
+
+REMOVED FROM THE APPLICATION
+- Manuals
+- Attendance
+- Heat Map
+- Insurance Claims
+- Their sidebar links, routes, module-access roles, and launch helpers
+
+IMPORTANT
+- No database tables or records are deleted.
+- Removed code is moved into a timestamped removed-modules-backup folder.
+- Run this from the martins-funeral-system root folder.
+
+POWERSHELL
+
+1. Extract martins-royalty-only-rollback.zip.
+
+2. Open PowerShell in the martins-funeral-system root folder.
+
+3. Run:
+
+   python .\martins-royalty-only-rollback\remove_integrated_modules.py .
+
+4. Test locally:
+
+   python run.py
+
+5. After confirming the royalty system works:
+
+   git add .
+   git commit -m "Restore royalty-only Martins system"
+   git push origin main
+
+The generated removed-modules-backup folder is intentionally retained so the
+removed module code can be recovered later if needed.

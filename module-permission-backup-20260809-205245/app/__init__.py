@@ -1,5 +1,4 @@
-from flask import Flask, abort, g, request, url_for
-from flask_login import current_user
+﻿from flask import Flask, g, request, url_for
 import click
 import logging
 import time
@@ -7,7 +6,6 @@ from pathlib import Path
 from datetime import datetime, timedelta
 from config import Config
 from app.extensions import db, migrate, login_manager, mail
-from app.module_access import has_module_access
 
 
 def create_app(config_class=Config):
@@ -29,24 +27,6 @@ def create_app(config_class=Config):
     @app.before_request
     def start_request_timer():
         g.request_started_at = time.perf_counter()
-
-    @app.before_request
-    def enforce_module_access():
-        if not current_user.is_authenticated:
-            return None
-
-        endpoint = request.endpoint or ""
-        protected_modules = (
-            (("claims_launch.", "insurance_claims."), "claims"),
-            (("attendance_launch.", "attendance."), "attendance"),
-            (("heatmap.",), "heat_map"),
-        )
-        for endpoint_prefixes, module_key in protected_modules:
-            if endpoint.startswith(endpoint_prefixes) and not has_module_access(
-                current_user, module_key
-            ):
-                abort(403)
-        return None
 
     @app.after_request
     def record_request_timing(response):
@@ -152,7 +132,6 @@ def create_app(config_class=Config):
             "brand_logo_url": _static_asset_url("img/logo.png"),
             "brand_logo_fallback_url": _static_asset_url("img/logo-placeholder.svg"),
             "asset_url": _static_asset_url,
-            "has_module_access": has_module_access,
         }
 
     @app.context_processor
