@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Print office QR — {{ office.name }}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #111; background: #eee; font-family: Arial, sans-serif; }
+    .sheet { width: 210mm; min-height: 297mm; margin: 10mm auto; padding: 25mm; background: #fff; text-align: center; }
+    h1 { margin: 0 0 8px; font-size: 34px; }
+    .office { margin-bottom: 20px; font-size: 20px; }
+    .qr { display: block; width: 140mm; height: 140mm; margin: 0 auto 18px; image-rendering: pixelated; }
+    .instruction { font-size: 24px; font-weight: 700; }
+    .note { margin-top: 18px; font-size: 15px; }
+    button { margin: 15px; padding: 10px 20px; }
+    @media print {
+      @page { size: A4 portrait; margin: 0; }
+      body { background: #fff; }
+      .sheet { margin: 0; }
+      button { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet">
+    <h1>Employee Attendance</h1>
+    <div class="office">{{ office.name }}{% if office.address %} — {{ office.address }}{% endif %}</div>
+    <img class="qr" src="{{ url_for('attendance.office_qr_image', office_id=office.id) }}" alt="Permanent attendance QR code for {{ office.name }}">
+    <div class="instruction">Scan with your phone’s rear camera</div>
+    <div class="note">This printed QR code is permanent. It does not expire.</div>
+    <button type="button" onclick="window.print()">Print this page</button>
+  </div>
+</body>
+</html>

@@ -1,3 +1,79 @@
-{% extends "attendance/base.html" %}{% block attendance_title %}Office QR Locations{% endblock %}{% block attendance_content %}
-<div class="form-section-card"><h2>Add Office QR Location</h2><form method="post" class="professional-form"><div class="form-grid">{% if not selected %}<label>Franchise</label><select name="franchise_id">{% for f in franchises %}<option value="{{ f.id }}">{{ f.business_name }}</option>{% endfor %}</select>{% endif %}<label>Office Name</label><input name="name" required><label>Address</label><input name="address"><label>Latitude</label><input name="latitude" type="number" step="any"><label>Longitude</label><input name="longitude" type="number" step="any"><label>Allowed Radius (m)</label><input name="allowed_radius_m" type="number" value="100"></div><div class="form-actions"><button class="button-auto">Create Office QR</button></div></form></div>
-<div class="form-section-card"><h2>Office QR Codes</h2><div class="table-responsive"><table><thead><tr><th>Office</th><th>Franchise</th><th>Address</th><th>GPS</th><th>QR Link</th></tr></thead><tbody>{% for o in offices %}<tr><td>{{ o.name }}</td><td>{{ o.franchise.business_name if o.franchise else '' }}</td><td>{{ o.address }}</td><td>{{ o.latitude }}, {{ o.longitude }}<br>{{ o.allowed_radius_m }}m</td><td><a class="btn small" target="_blank" href="{{ url_for('attendance.scan', token=o.qr_token, _external=True) }}">Open QR Sign-in Page</a></td></tr>{% else %}<tr><td colspan="5">No office QR locations yet.</td></tr>{% endfor %}</tbody></table></div></div>{% endblock %}
+{% extends "attendance/base.html" %}
+{% block attendance_title %}Office QR Locations{% endblock %}
+{% block attendance_content %}
+<div class="form-section-card">
+  <h2>Add Office QR Location</h2>
+  <form method="post" class="professional-form">
+    <div class="form-grid">
+      {% if not selected %}<label>Franchise</label><select name="franchise_id">{% for f in franchises %}<option value="{{ f.id }}">{{ f.business_name }}</option>{% endfor %}</select>{% endif %}
+      <label>Office Name</label><input name="name" required>
+      <label>Address</label><input name="address">
+      <label>Latitude</label><input name="latitude" type="number" step="any">
+      <label>Longitude</label><input name="longitude" type="number" step="any">
+      <label>Allowed Radius (m)</label><input name="allowed_radius_m" type="number" value="100">
+    </div>
+    <div class="form-actions"><button class="button-auto">Create Office QR</button></div>
+  </form>
+</div>
+
+<div class="form-section-card">
+  <h2>Office QR Codes</h2>
+  <p class="muted">The reception QR is permanent and safe to print. Only the separate four-digit remote code expires.</p>
+  <div class="table-responsive">
+    <table>
+      <thead><tr><th>Office</th><th>Franchise</th><th>Address</th><th>GPS</th><th>Permanent reception QR</th><th>Remote fallback</th></tr></thead>
+      <tbody>
+      {% for o in offices %}
+        <tr>
+          <td>{{ o.name }}</td>
+          <td>{{ o.franchise.business_name if o.franchise else '' }}</td>
+          <td>{{ o.address }}</td>
+          <td>{{ o.latitude }}, {{ o.longitude }}<br>{{ o.allowed_radius_m }}m</td>
+          <td>
+            <div class="button-row">
+              <a class="btn small" target="_blank" href="{{ url_for('attendance.scan', token=o.qr_token, _external=True) }}">Open sign-in</a>
+              <a class="btn small secondary" target="_blank" href="{{ url_for('attendance.office_qr_print', office_id=o.id) }}">Print QR</a>
+            </div>
+          </td>
+          <td>
+            <div class="fallback-code" data-code-url="{{ url_for('attendance.office_fallback_code', office_id=o.id) }}">
+              <strong class="fallback-code-value">----</strong>
+              <small class="fallback-code-expiry muted">Loading…</small>
+              <a href="{{ url_for('attendance.fallback_scan', office_id=o.id, _external=True) }}">Remote entry page</a>
+            </div>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6">No office QR locations yet.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function () {
+  async function refreshCode(container) {
+    try {
+      const response = await fetch(container.dataset.codeUrl, {cache: 'no-store'});
+      if (!response.ok) throw new Error('Code unavailable');
+      const data = await response.json();
+      container.querySelector('.fallback-code-value').textContent = data.code;
+      container.dataset.expires = data.expires_in;
+    } catch (error) {
+      container.querySelector('.fallback-code-expiry').textContent = 'Unable to load';
+    }
+  }
+  const containers = Array.from(document.querySelectorAll('.fallback-code'));
+  containers.forEach(refreshCode);
+  setInterval(function () {
+    containers.forEach(function (container) {
+      let remaining = Number(container.dataset.expires || 0) - 1;
+      container.dataset.expires = remaining;
+      container.querySelector('.fallback-code-expiry').textContent = remaining > 0 ? 'Expires in ' + remaining + 's' : 'Refreshing…';
+      if (remaining <= 0) refreshCode(container);
+    });
+  }, 1000);
+})();
+</script>
+{% endblock %}

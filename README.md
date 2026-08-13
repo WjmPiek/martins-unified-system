@@ -1,5 +1,12 @@
 # Martins Direct Basic Portal
 
+## Attendance QR behaviour
+
+- Each office reception QR contains a permanent random URL token. It is designed to be printed and does not expire.
+- The printable QR uses a white quiet zone, large modules, and high error correction for reliable scanning with a mobile phone rear camera.
+- When an employee cannot scan the reception QR, an attendance user can give them the separate four-digit fallback code shown on the Office QR page. This code changes every five minutes.
+- Remote fallback submissions are recorded with source `time_code`, work location `Remote`, GPS details when available, and the normal pending-approval status.
+
 Basic Flask starter system with:
 
 - PostgreSQL database

@@ -1230,6 +1230,8 @@ button:disabled, .btn:disabled {
     letter-spacing: .08em;
     margin-bottom: 18px;
 }
+.fallback-code { display: grid; gap: 0.2rem; min-width: 9rem; }
+.fallback-code-value { font-size: 1.7rem; letter-spacing: 0.25em; font-variant-numeric: tabular-nums; }
 @media print {
     .attendance-tabs, .topbar, .sidebar, .form-actions, button { display: none !important; }
     .attendance-id-card { box-shadow: none; border: 1px solid #000; margin: 0 auto; }
