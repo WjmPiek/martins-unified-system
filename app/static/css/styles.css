@@ -2363,6 +2363,31 @@ table{border-radius:14px;overflow:hidden}th{background:#f5f2f8;color:#4d3c5c;fon
 .empty-state,.mfs-chart-empty{background:#faf8fc;border:1px dashed #d8cce0;border-radius:14px;color:#71667a;padding:28px;text-align:center}
 @media(max-width:899px){.content-area{padding:20px 14px 36px}.topbar{padding:0 14px}.topbar-user span,.topbar-user small{display:none}.nav-section.nav-domain>summary{padding:12px}.menu-panel{width:min(88vw,340px)}}
 
+/* Franchise accounts use the same Martins shell as the admin area. */
+.franchise-context-card {
+  display: grid;
+  gap: 4px;
+  margin: 2px 10px 14px;
+  padding: 13px 14px;
+  border: 1px solid var(--ui-border, #e8dfed);
+  border-left: 4px solid var(--ui-purple, #6b4aa0);
+  border-radius: 12px;
+  background: #faf7fc;
+  color: var(--ui-navy, #10233d);
+}
+.franchise-context-card small {
+  color: var(--ui-muted, #64748b);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.franchise-context-card strong {
+  overflow-wrap: anywhere;
+  font-size: 14px;
+  line-height: 1.35;
+}
+
 /* ========================================================================
    Martins Funerals System V115 - Soft Enterprise Analytics Design System
    ======================================================================== */
