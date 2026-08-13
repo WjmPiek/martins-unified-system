@@ -8,7 +8,7 @@ from openpyxl import load_workbook
 
 from app.audit import log_action
 from app.extensions import db
-from app.franchise_context import enforce_franchise_access, get_selected_franchise, is_franchise_view_mode
+from app.franchise_context import get_selected_franchise, is_franchise_view_mode
 from app.models import Franchise, HeatmapRecord
 
 heatmap_bp = Blueprint("heatmap", __name__, url_prefix="/heat-map")
@@ -17,28 +17,6 @@ PROVINCES = [
     "Eastern Cape", "Free State", "Gauteng", "KwaZulu-Natal", "Limpopo",
     "Mpumalanga", "North West", "Northern Cape", "Western Cape",
 ]
-
-HEATMAP_RECORD_TYPES = {
-    "deceased": "Deceased",
-    "church": "Church",
-    "cemetery": "Cemetery",
-    "crematorium": "Crematorium",
-    "insurance_clients": "Insurance Clients",
-}
-
-
-def normalize_record_type(value):
-    key = clean(value).lower().replace("-", "_").replace(" ", "_")
-    aliases = {
-        "insurance": "insurance_clients",
-        "insurance_client": "insurance_clients",
-        "insurance_clients": "insurance_clients",
-        "client": "insurance_clients",
-        "clients": "insurance_clients",
-        "deceased_client": "deceased",
-    }
-    key = aliases.get(key, key)
-    return key if key in HEATMAP_RECORD_TYPES else "deceased"
 
 
 def permission_required(code):
@@ -79,7 +57,7 @@ def selected_or_requested_franchise_id():
 def scoped_query():
     query = HeatmapRecord.query
     allowed = accessible_franchise_ids()
-    if current_user.is_franchise_scoped_user() or not (current_user.has_permission("franchise_management:view") or current_user.has_permission("franchise_management:manage")):
+    if not (current_user.has_permission("franchise_management:view") or current_user.has_permission("franchise_management:manage")):
         if not allowed:
             return query.filter(False)
         query = query.filter(HeatmapRecord.franchise_id.in_(allowed))
@@ -147,11 +125,6 @@ def parse_heatmap_excel(file_storage, source_filename, franchise_id):
         country = clean(cell(ws, row, headers, "country")) or "South Africa"
         full_address = clean(cell(ws, row, headers, "full address", "fulladdress")) or build_full_address(address, city, province, country)
         relation = clean(cell(ws, row, headers, "relation"))
-        explicit_record_type = clean(cell(
-            ws, row, headers, "record type", "record_type", "map category",
-            "category", "client type", "location type"
-        ))
-        record_type = normalize_record_type(explicit_record_type)
 
         if has_relation_column and relation.upper() != "MEM":
             skipped_non_mem += 1
@@ -177,7 +150,7 @@ def parse_heatmap_excel(file_storage, source_filename, franchise_id):
             next_of_kin_name=clean(cell(ws, row, headers, "next of kin name", "nok name")),
             next_of_kin_surname=clean(cell(ws, row, headers, "next of kin surname", "nok surname")),
             relationship=clean(cell(ws, row, headers, "relationship")),
-            relation=f"MAP:{record_type}" if explicit_record_type else relation,
+            relation=relation,
             contact_number=clean(cell(ws, row, headers, "contact number", "cell number", "phone")),
             source_filename=source_filename,
             created_by_id=current_user.id,
@@ -197,7 +170,6 @@ def index():
         selected_franchise=selected,
         provinces=PROVINCES,
         can_modify_heatmap=can_modify_heatmap(),
-        record_types=HEATMAP_RECORD_TYPES,
         google_maps_api_key=current_app.config.get("GOOGLE_MAPS_API_KEY", ""),
     )
 
@@ -209,7 +181,6 @@ def data():
     records = scoped_query().order_by(HeatmapRecord.city.asc(), HeatmapRecord.mf_file.asc()).all()
     province_counts = Counter(record.province for record in records if record.province)
     city_counts = Counter(record.city for record in records if record.city)
-    type_counts = Counter(record.map_record_type for record in records)
     mapped = sum(1 for record in records if record.latitude is not None and record.longitude is not None)
     return jsonify({
         "records": [record.to_dict() for record in records],
@@ -219,7 +190,6 @@ def data():
             "unmapped": len(records) - mapped,
             "province": dict(province_counts),
             "cities": dict(city_counts.most_common(10)),
-            "recordTypes": dict(type_counts),
         }
     })
 
@@ -265,12 +235,13 @@ def save_record():
     record = HeatmapRecord.query.get(record_id) if record_id else HeatmapRecord(created_by_id=current_user.id)
     if not record:
         abort(404)
-    if record_id:
-        enforce_franchise_access(record.franchise_id)
+    if record.franchise_id and record.franchise_id not in accessible_franchise_ids() and not current_user.has_permission("franchise_management:view"):
+        abort(403)
     franchise_id = payload.get("franchiseId") or selected_or_requested_franchise_id()
     if franchise_id:
         franchise_id = int(franchise_id)
-        enforce_franchise_access(franchise_id)
+        if franchise_id not in accessible_franchise_ids() and not current_user.has_permission("franchise_management:view"):
+            abort(403)
     record.franchise_id = franchise_id
     mapping = {
         "mf_file": "mfFile", "deceased_name": "deceasedName", "deceased_surname": "deceasedSurname",
@@ -280,8 +251,6 @@ def save_record():
     }
     for attr, key in mapping.items():
         setattr(record, attr, clean(payload.get(key)))
-    if payload.get("recordType"):
-        record.relation = f"MAP:{normalize_record_type(payload.get('recordType'))}"
     record.latitude = number(payload.get("latitude"))
     record.longitude = number(payload.get("longitude"))
     record.weight = number(payload.get("weight")) or 1
@@ -299,7 +268,8 @@ def delete_record(record_id):
     if not can_modify_heatmap():
         abort(403)
     record = HeatmapRecord.query.get_or_404(record_id)
-    enforce_franchise_access(record.franchise_id)
+    if record.franchise_id and record.franchise_id not in accessible_franchise_ids() and not current_user.has_permission("franchise_management:view"):
+        abort(403)
     db.session.delete(record)
     db.session.commit()
     log_action("Heat Map", "Deleted heat map record", record.mf_file or record.full_address or str(record_id))

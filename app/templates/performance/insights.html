@@ -26,7 +26,6 @@
             {% for value in year_options %}<option value="{{ value }}" {% if value == selected_year %}selected{% endif %}>{{ value }}</option>{% endfor %}
         </select>
     </label>
-    {% if not franchise_locked_user %}
     <label>Franchise
         <select name="franchise_id">
             <option value="">Group / Head Office</option>
@@ -35,7 +34,6 @@
             {% endfor %}
         </select>
     </label>
-    {% endif %}
     <input type="hidden" name="target_mode" value="{{ target_mode }}">
     <input type="hidden" name="growth" value="{{ growth }}">
     <button class="btn" type="submit">Update</button>

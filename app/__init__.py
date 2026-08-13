@@ -1,4 +1,4 @@
-﻿from flask import Flask, abort, g, request, session, url_for
+﻿from flask import Flask, g, request, url_for
 import click
 import logging
 import time
@@ -62,61 +62,6 @@ def create_app(config_class=Config):
     login_manager.login_view = "auth.login"
     login_manager.login_message = None
     login_manager.login_message_category = "warning"
-
-    @app.before_request
-    def enforce_locked_franchise_scope():
-        """Reject forged tenant IDs before any view can query or mutate data."""
-        from flask_login import current_user
-        from app.franchise_context import get_locked_franchise_id, is_franchise_locked_user
-
-        if not getattr(current_user, "is_authenticated", False) or not is_franchise_locked_user():
-            return None
-        if request.blueprint == "auth" or request.path.startswith(app.static_url_path + "/"):
-            return None
-        if request.blueprint == "admin":
-            abort(403)
-
-        locked_id = get_locked_franchise_id()
-        if not locked_id:
-            abort(403)
-        session["selected_franchise_id"] = locked_id
-        session["franchise_view_mode"] = True
-
-        def validate_value(key, value):
-            normalized_key = str(key or "").lower()
-            compact_key = "".join(character for character in normalized_key if character.isalnum())
-            if not compact_key.endswith("franchiseid"):
-                return
-            if value in (None, ""):
-                return
-            try:
-                supplied_id = int(value)
-            except (TypeError, ValueError):
-                abort(403)
-            if supplied_id != locked_id:
-                abort(403)
-
-        for key, value in (request.view_args or {}).items():
-            validate_value(key, value)
-        for source in (request.args, request.form):
-            for key in source.keys():
-                for value in source.getlist(key):
-                    validate_value(key, value)
-        if request.is_json:
-            payload = request.get_json(silent=True)
-
-            def inspect_json(value):
-                if isinstance(value, dict):
-                    for key, child in value.items():
-                        if not isinstance(child, (dict, list)):
-                            validate_value(key, child)
-                        inspect_json(child)
-                elif isinstance(value, list):
-                    for child in value:
-                        inspect_json(child)
-
-            inspect_json(payload)
-        return None
 
     from app.auth.routes import auth_bp
     from app.dashboard.routes import dashboard_bp
@@ -195,14 +140,12 @@ def create_app(config_class=Config):
             get_accessible_franchises,
             get_selected_franchise,
             is_franchise_view_mode,
-            is_franchise_locked_user,
             is_privileged_user,
         )
         return {
             "accessible_franchises": get_accessible_franchises(),
             "selected_franchise": get_selected_franchise(),
             "franchise_view_mode": is_franchise_view_mode(),
-            "franchise_locked_user": is_franchise_locked_user(),
             "privileged_user": is_privileged_user(),
         }
 

@@ -5,7 +5,7 @@
   <div class="section-header">
     <div>
       <h1>Performance Graphs</h1>
-      <p class="muted">{% if franchise_locked_user %}Your franchise performance loads below using only the data assigned to your account.{% else %}The page opens immediately. Graph data loads in the background from the pre-calculated performance cache.{% endif %}</p>
+      <p class="muted">The page opens immediately. Graph data loads in the background from the pre-calculated performance cache.</p>
     </div>
     <div class="quick-actions">
       <a class="btn secondary button-auto" href="{{ url_for('performance.index', month=selected_month, year=selected_year) }}">Leaderboard</a>
@@ -33,7 +33,6 @@
       </select>
     </label>
     {% endif %}
-    {% if not franchise_locked_user %}
     <label>Franchise
       <select name="franchise_id">
         {% if show_combined_option %}
@@ -44,7 +43,6 @@
         {% endfor %}
       </select>
     </label>
-    {% endif %}
     <label>KPI
       <select name="metric">
         {% for key, metric in metrics.items() %}<option value="{{ key }}" {% if key == metric_key %}selected{% endif %}>{{ metric.label }}</option>{% endfor %}

@@ -2,17 +2,11 @@
 from datetime import datetime, timezone, date, time
 from io import BytesIO
 import csv
-import hashlib
-import hmac
 import math
 import secrets
-import struct
-import time as time_module
 
-from flask import Blueprint, Response, flash, redirect, render_template, request, send_file, url_for, current_app
+from flask import Blueprint, Response, flash, redirect, render_template, request, url_for, current_app
 from flask_login import current_user, login_required
-import qrcode
-from qrcode.constants import ERROR_CORRECT_H
 from sqlalchemy import func, or_
 
 from app.extensions import db
@@ -20,8 +14,6 @@ from app.models import AttendanceStaff, AttendanceOffice, AttendanceEvent, Atten
 from app.franchise_context import get_accessible_franchises, get_selected_franchise
 
 attendance_bp = Blueprint("attendance", __name__, url_prefix="/attendance")
-
-FALLBACK_CODE_PERIOD_SECONDS = 300
 
 
 def _can(action="view"):
@@ -76,73 +68,6 @@ def _distance_m(lat1, lon1, lat2, lon2):
     dlambda = math.radians(lon2 - lon1)
     a = math.sin(dphi/2)**2 + math.cos(phi1)*math.cos(phi2)*math.sin(dlambda/2)**2
     return round(radius * 2 * math.atan2(math.sqrt(a), math.sqrt(1-a)), 2)
-
-
-def _fallback_code(office, at_timestamp=None):
-    """Return the office's four-digit, five-minute fallback code."""
-    timestamp = int(time_module.time() if at_timestamp is None else at_timestamp)
-    counter = timestamp // FALLBACK_CODE_PERIOD_SECONDS
-    secret = f"{current_app.secret_key}:{office.qr_token}".encode("utf-8")
-    digest = hmac.new(secret, struct.pack(">Q", counter), hashlib.sha256).digest()
-    offset = digest[-1] & 0x0F
-    number = struct.unpack(">I", digest[offset:offset + 4])[0] & 0x7FFFFFFF
-    return f"{number % 10000:04d}"
-
-
-def _valid_fallback_code(office, submitted_code, at_timestamp=None):
-    code = (submitted_code or "").strip()
-    return len(code) == 4 and code.isdigit() and hmac.compare_digest(
-        code, _fallback_code(office, at_timestamp)
-    )
-
-
-def _attendance_event(office, source, work_location_type):
-    employee_number = request.form.get("employee_number", "").strip()
-    action = request.form.get("action", "sign_in")
-    if action not in {"sign_in", "sign_out"}:
-        flash("Select a valid attendance action.", "danger")
-        return False
-
-    staff = AttendanceStaff.query.filter_by(
-        employee_number=employee_number,
-        franchise_id=office.franchise_id,
-        is_active=True,
-    ).first()
-    if not staff:
-        flash("No active staff member was found for that employee number at this office.", "danger")
-        return False
-
-    try:
-        latitude = float(request.form["latitude"]) if request.form.get("latitude") else None
-        longitude = float(request.form["longitude"]) if request.form.get("longitude") else None
-        accuracy = float(request.form["accuracy"]) if request.form.get("accuracy") else None
-    except (TypeError, ValueError):
-        flash("The phone supplied an invalid location. Please refresh and try again.", "danger")
-        return False
-
-    distance = _distance_m(latitude, longitude, office.latitude, office.longitude)
-    gps_status = "inside_radius" if distance is not None and distance <= office.allowed_radius_m else (
-        "outside_radius" if distance is not None else "not_checked"
-    )
-    event = AttendanceEvent(
-        staff_id=staff.id,
-        franchise_id=staff.franchise_id,
-        office_id=office.id,
-        action=action,
-        latitude=latitude,
-        longitude=longitude,
-        accuracy_meters=accuracy,
-        distance_from_site_m=distance,
-        gps_status=gps_status,
-        work_location_type=work_location_type,
-        source=source,
-        device_info=request.headers.get("User-Agent", ""),
-        employee_note=request.form.get("employee_note", "").strip(),
-    )
-    db.session.add(event)
-    db.session.commit()
-    flash(f"{staff.full_name} {action.replace('_', ' ')} recorded.", "success")
-    return True
 
 
 @attendance_bp.route("/")
@@ -253,73 +178,27 @@ def offices():
     return render_template("attendance/offices.html", offices=offices, franchises=franchises, selected=selected)
 
 
-@attendance_bp.route("/offices/<int:office_id>/qr.png")
-@login_required
-def office_qr_image(office_id):
-    if not _require("view"):
-        return redirect(url_for("attendance.index"))
-    office = AttendanceOffice.query.filter_by(id=office_id, is_active=True).first_or_404()
-    scan_url = url_for("attendance.scan", token=office.qr_token, _external=True)
-    qr = qrcode.QRCode(
-        version=None,
-        error_correction=ERROR_CORRECT_H,
-        box_size=12,
-        border=4,
-    )
-    qr.add_data(scan_url)
-    qr.make(fit=True)
-    image = qr.make_image(fill_color="black", back_color="white")
-    output = BytesIO()
-    image.save(output, format="PNG")
-    output.seek(0)
-    return send_file(
-        output,
-        mimetype="image/png",
-        download_name=f"office-qr-{office.id}.png",
-        max_age=0,
-    )
-
-
-@attendance_bp.route("/offices/<int:office_id>/print")
-@login_required
-def office_qr_print(office_id):
-    if not _require("view"):
-        return redirect(url_for("attendance.index"))
-    office = AttendanceOffice.query.filter_by(id=office_id, is_active=True).first_or_404()
-    return render_template("attendance/office_qr_print.html", office=office)
-
-
-@attendance_bp.route("/offices/<int:office_id>/fallback-code")
-@login_required
-def office_fallback_code(office_id):
-    if not _require("view"):
-        return {"error": "forbidden"}, 403
-    office = AttendanceOffice.query.filter_by(id=office_id, is_active=True).first_or_404()
-    now = int(time_module.time())
-    return {
-        "code": _fallback_code(office, now),
-        "expires_in": FALLBACK_CODE_PERIOD_SECONDS - (now % FALLBACK_CODE_PERIOD_SECONDS),
-    }, 200, {"Cache-Control": "no-store"}
-
-
 @attendance_bp.route("/scan/<token>", methods=["GET", "POST"])
 def scan(token):
     office = AttendanceOffice.query.filter_by(qr_token=token, is_active=True).first_or_404()
     if request.method == "POST":
-        if _attendance_event(office, "office_qr", "Office"):
+        employee_number = request.form.get("employee_number", "").strip()
+        action = request.form.get("action", "sign_in")
+        staff = AttendanceStaff.query.filter_by(employee_number=employee_number, is_active=True).first()
+        if not staff:
+            flash("No active staff member was found for that employee number.", "danger")
+        else:
+            lat = request.form.get("latitude") or None
+            lon = request.form.get("longitude") or None
+            latf = float(lat) if lat else None
+            lonf = float(lon) if lon else None
+            distance = _distance_m(latf, lonf, office.latitude, office.longitude)
+            gps_status = "inside_radius" if distance is not None and distance <= office.allowed_radius_m else ("outside_radius" if distance is not None else "not_checked")
+            ev = AttendanceEvent(staff_id=staff.id, franchise_id=staff.franchise_id, office_id=office.id, action=action, latitude=latf, longitude=lonf, accuracy_meters=float(request.form.get("accuracy") or 0) or None, distance_from_site_m=distance, gps_status=gps_status, work_location_type="Office", source="office_qr", device_info=request.headers.get("User-Agent", ""), employee_note=request.form.get("employee_note", ""))
+            db.session.add(ev); db.session.commit()
+            flash(f"{staff.full_name} {action.replace('_',' ')} recorded.", "success")
             return redirect(url_for("attendance.scan", token=token))
-    return render_template("attendance/scan.html", office=office, mode="office_qr")
-
-
-@attendance_bp.route("/code/<int:office_id>", methods=["GET", "POST"])
-def fallback_scan(office_id):
-    office = AttendanceOffice.query.filter_by(id=office_id, is_active=True).first_or_404()
-    if request.method == "POST":
-        if not _valid_fallback_code(office, request.form.get("fallback_code")):
-            flash("That four-digit code is invalid or has expired. Ask the office for the current code.", "danger")
-        elif _attendance_event(office, "time_code", "Remote"):
-            return redirect(url_for("attendance.fallback_scan", office_id=office.id))
-    return render_template("attendance/scan.html", office=office, mode="time_code")
+    return render_template("attendance/scan.html", office=office)
 
 
 @attendance_bp.route("/manual", methods=["GET", "POST"])
@@ -361,11 +240,7 @@ def approvals():
     if not _require("approve"):
         return redirect(url_for("attendance.index"))
     if request.method == "POST":
-        staff_ids = [s.id for s in _staff_query().with_entities(AttendanceStaff.id).all()]
-        event = AttendanceEvent.query.filter(
-            AttendanceEvent.id == int(request.form.get("event_id")),
-            AttendanceEvent.staff_id.in_(staff_ids),
-        ).first_or_404()
+        event = AttendanceEvent.query.get_or_404(int(request.form.get("event_id")))
         action = request.form.get("decision")
         if action == "approve":
             event.approval_status = "approved"; event.approved_by_id = current_user.id; event.approved_at = datetime.now(timezone.utc)
@@ -402,11 +277,7 @@ def leave():
 def leave_decision(request_id, decision):
     if not _require("approve"):
         return redirect(url_for("attendance.leave"))
-    staff_ids = [s.id for s in _staff_query().with_entities(AttendanceStaff.id).all()]
-    lr = AttendanceLeaveRequest.query.filter(
-        AttendanceLeaveRequest.id == request_id,
-        AttendanceLeaveRequest.staff_id.in_(staff_ids),
-    ).first_or_404()
+    lr = AttendanceLeaveRequest.query.get_or_404(request_id)
     if decision in ("approved", "declined"):
         lr.status = decision; lr.decided_by_id = current_user.id; lr.decided_at = datetime.now(timezone.utc); lr.manager_note = request.form.get("manager_note", "")
         db.session.commit(); flash("Leave request updated.", "success")

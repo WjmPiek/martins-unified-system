@@ -14,7 +14,6 @@
     {% endif %}
 </div>
 
-{% if not franchise_locked_user %}
 <div class="form-section-card no-print" id="franchise-selector-card">
     <div class="section-title-row">
         <div>
@@ -77,7 +76,6 @@
     </div>
     {% endif %}
 </div>
-{% endif %}
 
 <form method="post" class="professional-form">
     <input type="hidden" name="franchise_id" value="{{ franchise.id }}">

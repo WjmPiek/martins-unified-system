@@ -25,12 +25,7 @@
     <link rel="stylesheet" href="{{ asset_url('css/styles.css') }}">
     <link rel="stylesheet" href="{{ asset_url('css/martins-theme.css') }}">
 </head>
-{% set shell_role_names = current_user.roles|map(attribute='name')|list if current_user.is_authenticated else [] %}
-{% set shell_is_franchise_user = 'Franchise User' in shell_role_names or 'Franchise Manager' in shell_role_names or 'Franchise Employee' in shell_role_names or 'Franchise Agent' in shell_role_names or 'Manager' in shell_role_names or 'Employee' in shell_role_names or 'Agent' in shell_role_names or 'Read Only User' in shell_role_names %}
-{% set shell_is_admin_user = 'Admin' in shell_role_names or 'Super Admin' in shell_role_names %}
-{% set shell_is_finance_user = 'Finance Manager' in shell_role_names or 'Finance Assistant' in shell_role_names %}
-{% set shell_pure_franchise_portal = current_user.is_authenticated and shell_is_franchise_user and not shell_is_admin_user and not shell_is_finance_user and not privileged_user %}
-<body class="app-body{% if shell_pure_franchise_portal %} franchise-user-portal{% endif %}" data-current-path="{{ request.path }}" data-current-section="{{ request.args.get('section', '') }}">
+<body class="app-body" data-current-path="{{ request.path }}" data-current-section="{{ request.args.get('section', '') }}">
     {% if current_user.is_authenticated %}
         <div class="app-shell">
             <details class="app-menu" open>
@@ -39,87 +34,38 @@
                 </summary>
                 <div class="menu-panel">
                 <nav class="sidebar-nav">
-                    {% set nav_role_names = shell_role_names %}
-                    {% set is_franchise_user = shell_is_franchise_user %}
-                    {% set is_admin_user = shell_is_admin_user %}
-                    {% set is_finance_user = shell_is_finance_user %}
-                    {% set pure_franchise_portal = shell_pure_franchise_portal %}
+                    {% set nav_role_names = current_user.roles|map(attribute='name')|list %}
+                    {% set is_franchise_user = 'Franchise User' in nav_role_names or 'Franchise Manager' in nav_role_names or 'Franchise Employee' in nav_role_names or 'Franchise Agent' in nav_role_names or 'Manager' in nav_role_names or 'Employee' in nav_role_names or 'Agent' in nav_role_names %}
+                    {% set is_admin_user = 'Admin' in nav_role_names or 'Super Admin' in nav_role_names %}
+                    {% set is_finance_user = 'Finance Manager' in nav_role_names or 'Finance Assistant' in nav_role_names %}
+                    {% set pure_franchise_portal = is_franchise_user and not is_admin_user and not is_finance_user and not privileged_user %}
 
-                    <a class="sidebar-logo" href="{{ url_for('performance.graphs') if current_user.has_permission('performance:view') else url_for('dashboard.index') }}">
-                        <img
-                            src="{{ brand_logo_url }}"
-                            alt="Martins Funerals logo"
-                            width="180"
-                            height="81"
-                            loading="eager"
-                            decoding="async"
-                            fetchpriority="high"
-                        >
-                        <span><strong>Martins System</strong><small>Martins Funeral System</small></span>
+                    <a class="sidebar-logo{% if pure_franchise_portal %} franchise-logo-text{% endif %}" href="{{ url_for('performance.index') if pure_franchise_portal else (url_for('performance.graphs') if current_user.has_permission('performance:view') else url_for('dashboard.index')) }}">
+                        {% if pure_franchise_portal %}
+                            <span>{{ selected_franchise.business_name if selected_franchise else 'My Business' }}</span>
+                        {% else %}
+                            <img
+                                src="{{ brand_logo_url }}"
+                                alt="System Logo"
+                                width="180"
+                                height="81"
+                                loading="eager"
+                                decoding="async"
+                                fetchpriority="high"
+                            >
+                            <span><strong>Martins System</strong><small>Martins Funeral System</small></span>
+                        {% endif %}
                     </a>
 
-                    {# Franchise accounts share the Martins visual system while retaining a permission-scoped menu. #}
+                    {# Menu order: franchise users see a white-label portal; admin users see the group system. #}
                     {% if pure_franchise_portal %}
-                        <div class="franchise-context-card">
-                            <small>Your franchise</small>
-                            <strong>{{ selected_franchise.business_name if selected_franchise else 'My Business' }}</strong>
-                        </div>
-
-                        <div class="mobile-franchise-menu" aria-label="Franchise mobile menu">
-                            {% if current_user.has_permission('performance:view') %}
-                              <a href="{{ url_for('performance.graphs') }}"><span aria-hidden="true">◒</span><strong>Performance Graph</strong></a>
-                              <a href="{{ url_for('performance.index') }}"><span aria-hidden="true">#</span><strong>Leaderboard</strong></a>
-                            {% endif %}
-                            {% if current_user.has_permission('royalties:view') %}
-                              <a href="{{ url_for('royalties.index') }}"><span aria-hidden="true">R</span><strong>Royalty</strong></a>
-                            {% endif %}
-                            {% if current_user.has_permission('heat_map:view') %}
-                              <a href="{{ url_for('heatmap.index') }}"><span aria-hidden="true">◎</span><strong>Heat Map</strong></a>
-                            {% endif %}
-                            {% if current_user.has_permission('manuals:view') %}
-                              <a href="{{ url_for('manuals.index') }}"><span aria-hidden="true">≡</span><strong>Manuals</strong></a>
-                            {% endif %}
-                        </div>
-
-                        <details class="nav-section nav-domain" open>
-                            <summary><span class="nav-icon">◒</span><span><strong>Graphs &amp; Analytics</strong><small>Your performance and position</small></span></summary>
-                            <div class="nav-subtabs">
-                                <a href="{{ url_for('performance.graphs') }}">Performance Graph <small>Actual vs target, prior year and forecast</small></a>
-                                <a href="{{ url_for('performance.index') }}">Leaderboard <small>See your franchise's ranking</small></a>
-                            </div>
-                        </details>
-
-                        <details class="nav-section nav-domain" open>
-                            <summary><span class="nav-icon">R</span><span><strong>Monthly Figures</strong><small>Figures and royalty reporting</small></span></summary>
-                            <div class="nav-subtabs">
-                                <a href="{{ url_for('monthly.index') }}">Monthly Figures <small>View your monthly business figures</small></a>
-                                <a href="{{ url_for('royalties.index') }}">Royalty <small>View your calculated royalty figures</small></a>
-                            </div>
-                        </details>
-
-                        <details class="nav-section nav-domain" open>
-                            <summary><span class="nav-icon">≡</span><span><strong>Franchise Operations</strong><small>People and branch tools</small></span></summary>
-                            <div class="nav-subtabs">
-                                <a href="{{ url_for('franchise.details') }}">Franchise Details <small>Your branch information</small></a>
-                                <a href="{{ url_for('franchise.employees') }}">Employees <small>Your franchise team</small></a>
-                            </div>
-                        </details>
-
-                        {# Optional modules are controlled by the role permissions screen. #}
-                        {% if current_user.has_permission('heat_map:view') or current_user.has_permission('attendance:view') or current_user.has_permission('manuals:view') %}
-                        <details class="nav-section nav-domain" open>
-                            <summary><span class="nav-icon">+</span><span><strong>Activated Modules</strong><small>Additional franchise tools</small></span></summary>
-                            <div class="nav-subtabs">
-                                {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}">Heat Map <small>View franchise coverage and density</small></a>{% endif %}
-                                {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance_launch.launch') }}">Attendance <small>Staff attendance workspace</small></a>{% endif %}
-                                {% if current_user.has_permission('manuals:view') %}<a href="{{ url_for('manuals.index') }}">Manuals <small>Open franchise manuals and resources</small></a>{% endif %}
-                            </div>
-                        </details>
-                        {% endif %}
-
-                        <div class="nav-utility-links">
-                            {% if current_user.has_permission('insurance_claims:view') %}<a href="{{ url_for('claims_launch.launch') }}">Insurance Claims</a>{% endif %}
-                        </div>
+                        {% if current_user.has_permission('performance:view') %}<a href="{{ url_for('performance.index') }}">Leaderboard</a>{% endif %}
+                        {% if current_user.has_permission('performance:view') %}<a href="{{ url_for('performance.graphs') }}">Dashboard</a>{% endif %}
+                        {% if current_user.has_permission('franchise_employees:view') or current_user.has_permission('franchise_employees:manage') or is_franchise_user %}<a href="{{ url_for('franchise.employees') }}">Employees</a>{% endif %}
+                        {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance_launch.launch') }}">Attendance</a>{% endif %}
+                        {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}">Heat Map</a>{% endif %}
+                        {% if current_user.has_permission('insurance_claims:view') %}<a href="{{ url_for('claims_launch.launch') }}">Claims</a>{% endif %}
+                        {% if current_user.has_permission('manuals:view') %}<a href="{{ url_for('manuals.index') }}">Manuals</a>{% endif %}
                     {% elif privileged_user and franchise_view_mode %}
                         <div class="nav-group-title">Admin</div>
                         <a href="{{ url_for('dashboard.main_dashboard') }}">Back to Main Dashboard</a>
@@ -262,20 +208,23 @@
             <div class="main-panel">
                 <header class="topbar">
                     <div class="topbar-brand">
-                        <img
-                            class="topbar-logo"
-                            src="{{ brand_logo_url }}"
-                            alt="Martins Funerals logo"
-                            width="210"
-                            height="96"
-                            loading="eager"
-                            decoding="async"
-                            fetchpriority="high"
-                        >
+                        {% if pure_franchise_portal %}
+                            <div class="topbar-logo-text">{{ selected_franchise.business_name if selected_franchise else 'My Business' }}</div>
+                        {% else %}
+                            <img
+                                class="topbar-logo"
+                                src="{{ brand_logo_url }}"
+                                alt="Martins Funerals logo"
+                                width="210"
+                                height="96"
+                                loading="eager"
+                                decoding="async"
+                                fetchpriority="high"
+                            >
+                        {% endif %}
                         <div class="page-title">
                             {% if pure_franchise_portal %}
-                                Martins System
-                                <small class="selected-franchise-label">{{ selected_franchise.business_name if selected_franchise else 'My Business' }}</small>
+                                <span class="sr-only">{{ selected_franchise.business_name if selected_franchise else 'My Business' }}</span>
                             {% else %}
                                 Martins System
                                 {% if franchise_view_mode and selected_franchise %}
@@ -287,7 +236,7 @@
                     <div class="topbar-user">
                         <span>Logged in as</span>
                         <strong>{{ current_user.full_name }}</strong>
-                        <small>{{ current_user.roles|map(attribute='name')|join(', ') or 'No Role' }}</small>
+                        {% if not pure_franchise_portal %}<small>{{ current_user.roles|map(attribute='name')|join(', ') or 'No Role' }}</small>{% endif %}
                         {% if privileged_user and franchise_view_mode %}
                             <a class="logout-link secondary-link" href="{{ url_for('dashboard.main_dashboard') }}">Main Dashboard</a>
                         {% endif %}

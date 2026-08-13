@@ -11,11 +11,9 @@
   function filteredRecords() {
     const town = ($('heatTownFilter')?.value || '').trim().toLowerCase();
     const province = $('heatProvinceFilter')?.value || '';
-    const recordType = $('heatRecordTypeFilter')?.value || '';
     state.filtered = state.records.filter(r => {
       return (!town || String(r.city || '').toLowerCase().includes(town) || String(fullAddress(r)).toLowerCase().includes(town)) &&
-             (!province || r.province === province) &&
-             (!recordType || (r.recordType || 'deceased') === recordType);
+             (!province || r.province === province);
     });
     return state.filtered;
   }
@@ -33,7 +31,6 @@
     const mapsLink = hasPoint(record) ? `<a href="https://www.google.com/maps?q=${record.latitude},${record.longitude}" target="_blank" rel="noopener">Open in Google Maps</a>` : '';
     return `<div class="heatmap-popup">
       <strong>${esc(record.deceasedName)} ${esc(record.deceasedSurname)}</strong>
-      <div><b>Category:</b> ${esc(String(record.recordType || 'deceased').replaceAll('_', ' '))}</div>
       <div><b>MF File:</b> ${esc(record.mfFile || '-')}</div>
       <div><b>Franchise:</b> ${esc(record.franchiseName || '-')}</div>
       <div><b>Town:</b> ${esc(record.city || '-')}</div>
@@ -158,7 +155,7 @@
   };
 
   document.addEventListener('DOMContentLoaded', function () {
-    ['heatTownFilter', 'heatProvinceFilter', 'heatRadius', 'heatRecordTypeFilter'].forEach(id => $(id)?.addEventListener('input', () => applyFilters(false)));
+    ['heatTownFilter', 'heatProvinceFilter', 'heatRadius'].forEach(id => $(id)?.addEventListener('input', () => applyFilters(false)));
     $('heatFranchiseFilter')?.addEventListener('change', () => loadData(true));
     $('heatFitBoundsBtn')?.addEventListener('click', () => renderMap(true));
     $('heatGeocodeBtn')?.addEventListener('click', geocodeMissing);

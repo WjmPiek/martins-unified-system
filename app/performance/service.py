@@ -2,7 +2,6 @@ from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 from flask import g, has_request_context
-from flask_login import current_user
 from sqlalchemy import func
 
 from app.extensions import db
@@ -473,9 +472,6 @@ def active_leaderboard_franchise_ids(include_inactive=False):
     franchise users, while their detailed graphs/KPI pages remain scoped by
     accessible_franchise_ids().
     """
-    if has_request_context() and getattr(current_user, "is_authenticated", False) and current_user.is_franchise_scoped_user():
-        return accessible_franchise_ids(include_inactive=include_inactive)
-
     query = Franchise.query.order_by(Franchise.business_name)
     if not include_inactive:
         query = query.filter(Franchise.is_performance_active == True)

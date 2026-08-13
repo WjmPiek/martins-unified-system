@@ -1,42 +1,6 @@
 {% extends "base.html" %}
 {% block app_content %}
-<section class="mobile-franchise-royalty" aria-labelledby="mobileRoyaltyTitle">
-  <header class="mobile-royalty-header">
-    <span>Royalty due</span>
-    <h1 id="mobileRoyaltyTitle">{{ totals.total_due|rand }}</h1>
-    <p>For {{ selected_period_label }}</p>
-  </header>
-
-  <form method="get" action="{{ url_for('royalties.index') }}" class="mobile-royalty-period">
-    <label for="mobileRoyaltyMonth">Month</label>
-    <select id="mobileRoyaltyMonth" name="month">
-      {% for value, label in month_options %}<option value="{{ value }}" {% if selected_month == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
-    </select>
-    <label for="mobileRoyaltyYear">Year</label>
-    <select id="mobileRoyaltyYear" name="year">
-      {% for year in year_options %}<option value="{{ year }}" {% if selected_year == year %}selected{% endif %}>{{ year }}</option>{% endfor %}
-    </select>
-    <button class="btn" type="submit">Show month</button>
-  </form>
-
-  {% if figures %}
-    {% set mobile_figure = figures[0] %}
-    <div class="mobile-royalty-figures" aria-label="Figures for {{ selected_period_label }}">
-      <div><span>Royalty base</span><strong>{{ mobile_figure.gross_revenue|rand }}</strong></div>
-      <div><span>Royalty rate</span><strong>{{ '%.2f'|format(mobile_figure.royalty_percentage|float) }}%</strong></div>
-      <div><span>Cash</span><strong>{{ mobile_figure.cash|rand }}</strong></div>
-      <div><span>Sales</span><strong>{{ mobile_figure.sales|rand }}</strong></div>
-      <div><span>Admin fee</span><strong>{{ mobile_figure.admin_fee|rand }}</strong></div>
-      <div><span>Insurance receipts</span><strong>{{ mobile_figure.insurance_receipts|rand }}</strong></div>
-      <div><span>Insurance payover</span><strong>{{ mobile_figure.insurance_payover|rand }}</strong></div>
-      <div><span>Status</span><strong>{{ mobile_figure.status }}</strong></div>
-    </div>
-  {% else %}
-    <div class="mobile-royalty-empty">No royalty figures are available for {{ selected_period_label }}.</div>
-  {% endif %}
-</section>
-
-<section class="page-section royalty-overview-page desktop-royalty-content">
+<section class="page-section royalty-overview-page">
   <div class="section-header">
     <div>
       <h1>Royalty Calculation & History</h1>

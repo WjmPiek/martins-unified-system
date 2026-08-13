@@ -106,8 +106,6 @@ def accessible_franchise_ids():
     active franchise users and have their own franchise highlighted. This does
     not change detailed franchise access elsewhere in the system.
     """
-    if current_user.is_franchise_scoped_user():
-        return [franchise.id for franchise in current_user.accessible_franchises()]
     return [
         franchise.id
         for franchise in Franchise.query.filter(Franchise.is_performance_active == True)

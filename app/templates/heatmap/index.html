@@ -11,14 +11,6 @@
   <div class="alert warning">GOOGLE_MAPS_API_KEY is not configured. The map will not load until this environment variable is added locally and on Render.</div>
 {% endif %}
 
-<section class="form-section-card heatmap-category-toolbar">
-  <label for="heatRecordTypeFilter"><strong>Show map data</strong></label>
-  <select id="heatRecordTypeFilter">
-    <option value="">All categories</option>
-    {% for value, label in record_types.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
-  </select>
-</section>
-
 <section class="heatmap-stats-grid">
   <article class="metric-card"><span>Total records</span><strong id="heatTotal">0</strong></article>
   <article class="metric-card"><span>Mapped</span><strong id="heatMapped">0</strong></article>
@@ -67,17 +59,12 @@
     <h2>Import Excel</h2>
     <form method="post" action="{{ url_for('heatmap.import_excel') }}" enctype="multipart/form-data">
       <label for="heatImportFranchise">Import to franchise</label>
-      {% if franchise_locked_user %}
-      <input type="hidden" name="franchise_id" value="{{ selected_franchise.id }}">
-      <strong>{{ selected_franchise.business_name }}</strong>
-      {% else %}
       <select id="heatImportFranchise" name="franchise_id" required>
         <option value="">Select franchise</option>
         {% for franchise in franchises %}
           <option value="{{ franchise.id }}" {% if selected_franchise and selected_franchise.id == franchise.id %}selected{% endif %}>{{ franchise.business_name }}</option>
         {% endfor %}
       </select>
-      {% endif %}
       <label for="heatFile">Excel file</label>
       <input id="heatFile" name="file" type="file" accept=".xlsx,.xls" required>
       <button type="submit" class="btn button-auto">Import Heat Map File</button>
@@ -90,7 +77,7 @@
       <div id="heatMap"></div>
     </div>
 
-    <div class="form-section-card heatmap-records-card">
+    <div class="form-section-card">
       <h2>Current records</h2>
       <div class="table-responsive heatmap-record-table-wrap">
         <table class="system-report-table heatmap-record-table">

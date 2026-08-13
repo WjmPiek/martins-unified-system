@@ -8,7 +8,7 @@ from werkzeug.utils import secure_filename
 from app.extensions import db
 from app.audit import log_action
 from app.models import Franchise, RoyaltyScale, User, Role, MonthlyFigure
-from app.franchise_context import get_selected_franchise, is_franchise_locked_user
+from app.franchise_context import get_selected_franchise
 
 franchise_bp = Blueprint("franchise", __name__, url_prefix="/franchise")
 
@@ -84,12 +84,6 @@ def accessible_franchises_for_current_user(include_old=False):
     if not include_old:
         query = query.filter(Franchise.is_performance_active == True)
 
-    if current_user.is_franchise_scoped_user():
-        linked = current_user.accessible_franchises()
-        if not include_old:
-            linked = [item for item in linked if getattr(item, "is_performance_active", True)]
-        return linked
-
     if current_user.has_permission("franchise_management:view") or current_user.has_permission("franchise_management:manage"):
         return query.order_by(Franchise.business_name.asc()).all()
 
@@ -157,9 +151,6 @@ def get_or_create_franchise():
         franchise = accessible[0]
         session["selected_franchise_id"] = franchise.id
         return franchise
-
-    if is_franchise_locked_user():
-        abort(403)
 
     franchise = Franchise.query.filter(Franchise.is_performance_active == True).order_by(Franchise.id.asc()).first()
     if franchise:
@@ -304,7 +295,7 @@ def details():
         key=lambda user: (user.name or "", user.surname or "")
     )
     accessible_franchises = accessible_franchises_for_current_user()
-    missing_notifications = [] if is_franchise_locked_user() else missing_royalty_setup_notifications(accessible_franchises)
+    missing_notifications = missing_royalty_setup_notifications(accessible_franchises)
     selected_missing_items = missing_royalty_setup_items(franchise)
     return render_template(
         "franchise/details.html",
@@ -371,7 +362,7 @@ def franchise_creatable_roles():
 
 def franchises_available_for_employee_creation():
     # Franchise users may only create employees under franchises linked to their own user.
-    franchises = list(current_user.accessible_franchises() or [])
+    franchises = list(current_user.assigned_franchises or [])
     return sorted(franchises, key=lambda item: item.business_name or "")
 
 
