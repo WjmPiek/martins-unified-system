@@ -33,6 +33,7 @@
       </select>
     </label>
     {% endif %}
+    {% if not franchise_locked_user %}
     <label>Franchise
       <select name="franchise_id">
         {% if show_combined_option %}
@@ -43,6 +44,7 @@
         {% endfor %}
       </select>
     </label>
+    {% endif %}
     <label>KPI
       <select name="metric">
         {% for key, metric in metrics.items() %}<option value="{{ key }}" {% if key == metric_key %}selected{% endif %}>{{ metric.label }}</option>{% endfor %}

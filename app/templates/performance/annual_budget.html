@@ -25,9 +25,11 @@
                     {% for year in year_options %}<option value="{{ year }}" {% if year == selected_year %}selected{% endif %}>{{ year }}</option>{% endfor %}
                 </select>
             </label>
+            {% if not franchise_locked_user %}
             <label class="filter-grow">Franchise
                 <input type="search" name="q" value="{{ search }}" placeholder="Search franchise">
             </label>
+            {% endif %}
             <label>Rows
                 <select name="per_page"><option value="5" {% if per_page == 5 %}selected{% endif %}>5</option><option value="10" {% if per_page == 10 %}selected{% endif %}>10</option><option value="25" {% if per_page == 25 %}selected{% endif %}>25</option></select>
             </label>

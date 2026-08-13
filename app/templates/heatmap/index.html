@@ -59,12 +59,17 @@
     <h2>Import Excel</h2>
     <form method="post" action="{{ url_for('heatmap.import_excel') }}" enctype="multipart/form-data">
       <label for="heatImportFranchise">Import to franchise</label>
+      {% if franchise_locked_user %}
+      <input type="hidden" name="franchise_id" value="{{ selected_franchise.id }}">
+      <strong>{{ selected_franchise.business_name }}</strong>
+      {% else %}
       <select id="heatImportFranchise" name="franchise_id" required>
         <option value="">Select franchise</option>
         {% for franchise in franchises %}
           <option value="{{ franchise.id }}" {% if selected_franchise and selected_franchise.id == franchise.id %}selected{% endif %}>{{ franchise.business_name }}</option>
         {% endfor %}
       </select>
+      {% endif %}
       <label for="heatFile">Excel file</label>
       <input id="heatFile" name="file" type="file" accept=".xlsx,.xls" required>
       <button type="submit" class="btn button-auto">Import Heat Map File</button>

@@ -62,6 +62,8 @@ def role_names(user):
 
 
 def ordered_franchises_for_user(user):
+    if user.id == current_user.id and current_user.is_franchise_scoped_user():
+        return current_user.accessible_franchises()
     linked = list(getattr(user, "assigned_franchises", []) or [])
     if not linked:
         return []
@@ -92,7 +94,7 @@ def find_linked_franchise_group(selected_franchise=None):
             candidates.append((current_user, linked))
 
     selected_id = getattr(selected_franchise, "id", None)
-    if selected_id:
+    if selected_id and is_privileged_user():
         for user in User.query.all():
             linked = ordered_franchises_for_user(user)
             if len(linked) < 2 or not (role_names(user) & franchise_side_roles):

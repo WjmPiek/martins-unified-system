@@ -8,7 +8,7 @@ from openpyxl import load_workbook
 
 from app.audit import log_action
 from app.extensions import db
-from app.franchise_context import get_selected_franchise, is_franchise_view_mode
+from app.franchise_context import enforce_franchise_access, get_selected_franchise, is_franchise_view_mode
 from app.models import Franchise, HeatmapRecord
 
 heatmap_bp = Blueprint("heatmap", __name__, url_prefix="/heat-map")
@@ -57,7 +57,7 @@ def selected_or_requested_franchise_id():
 def scoped_query():
     query = HeatmapRecord.query
     allowed = accessible_franchise_ids()
-    if not (current_user.has_permission("franchise_management:view") or current_user.has_permission("franchise_management:manage")):
+    if current_user.is_franchise_scoped_user() or not (current_user.has_permission("franchise_management:view") or current_user.has_permission("franchise_management:manage")):
         if not allowed:
             return query.filter(False)
         query = query.filter(HeatmapRecord.franchise_id.in_(allowed))
@@ -235,13 +235,12 @@ def save_record():
     record = HeatmapRecord.query.get(record_id) if record_id else HeatmapRecord(created_by_id=current_user.id)
     if not record:
         abort(404)
-    if record.franchise_id and record.franchise_id not in accessible_franchise_ids() and not current_user.has_permission("franchise_management:view"):
-        abort(403)
+    if record_id:
+        enforce_franchise_access(record.franchise_id)
     franchise_id = payload.get("franchiseId") or selected_or_requested_franchise_id()
     if franchise_id:
         franchise_id = int(franchise_id)
-        if franchise_id not in accessible_franchise_ids() and not current_user.has_permission("franchise_management:view"):
-            abort(403)
+        enforce_franchise_access(franchise_id)
     record.franchise_id = franchise_id
     mapping = {
         "mf_file": "mfFile", "deceased_name": "deceasedName", "deceased_surname": "deceasedSurname",
@@ -268,8 +267,7 @@ def delete_record(record_id):
     if not can_modify_heatmap():
         abort(403)
     record = HeatmapRecord.query.get_or_404(record_id)
-    if record.franchise_id and record.franchise_id not in accessible_franchise_ids() and not current_user.has_permission("franchise_management:view"):
-        abort(403)
+    enforce_franchise_access(record.franchise_id)
     db.session.delete(record)
     db.session.commit()
     log_action("Heat Map", "Deleted heat map record", record.mf_file or record.full_address or str(record_id))

@@ -8,12 +8,13 @@ import re
 import secrets
 
 import pandas as pd
-from flask import Blueprint, current_app, flash, redirect, render_template, request, send_file, url_for, Response
+from flask import Blueprint, abort, current_app, flash, redirect, render_template, request, send_file, url_for, Response
 from flask_login import current_user, login_required
 from werkzeug.utils import secure_filename
 
 from app.extensions import db
 from app.audit import log_action
+from app.franchise_context import enforce_franchise_access, is_franchise_locked_user
 from app.models import (
     Franchise,
     InsurancePolicyMonthlyRaw,
@@ -85,6 +86,25 @@ def _selected_franchise_options():
     return current_user.accessible_franchises()
 
 
+def _franchise_scope_ids():
+    return [franchise.id for franchise in current_user.accessible_franchises()]
+
+
+def _scoped_query(model):
+    query = model.query
+    if is_franchise_locked_user():
+        ids = _franchise_scope_ids()
+        return query.filter(model.franchise_id.in_(ids)) if ids else query.filter(False)
+    return query
+
+
+def _get_accessible_claim_or_404(claim_id):
+    case = InsuranceClaimCase.query.get_or_404(claim_id)
+    if is_franchise_locked_user():
+        enforce_franchise_access(case.franchise_id)
+    return case
+
+
 def _match_franchise(name):
     raw = str(name or "").strip()
     if not raw:
@@ -124,8 +144,8 @@ def _read_excel_first_sheet(file_storage):
 
 
 def _dashboard_totals():
-    policies = InsurancePolicyMonthlyRaw.query.all()
-    claims = InsuranceClaimsMonthlyRaw.query.all()
+    policies = _scoped_query(InsurancePolicyMonthlyRaw).all()
+    claims = _scoped_query(InsuranceClaimsMonthlyRaw).all()
     total_retail = sum(Decimal(p.retail_premium or 0) for p in policies)
     total_risk = sum(Decimal(p.risk_premium or 0) for p in policies)
     total_claims = sum(Decimal(c.claims_amount or 0) for c in claims)
@@ -139,8 +159,8 @@ def _dashboard_totals():
         "total_claims": total_claims,
         "total_claim_count": total_claim_count,
         "claim_ratio": claim_ratio,
-        "open_cases": InsuranceClaimCase.query.filter_by(archived=False).filter(InsuranceClaimCase.status != "Closed").count(),
-        "closed_cases": InsuranceClaimCase.query.filter_by(status="Closed").count(),
+        "open_cases": _scoped_query(InsuranceClaimCase).filter_by(archived=False).filter(InsuranceClaimCase.status != "Closed").count(),
+        "closed_cases": _scoped_query(InsuranceClaimCase).filter_by(status="Closed").count(),
     }
 
 
@@ -149,16 +169,18 @@ def _dashboard_totals():
 def index():
     denied = _require("insurance_claims:view")
     if denied: return denied
-    recent_policy = InsurancePolicyMonthlyRaw.query.order_by(InsurancePolicyMonthlyRaw.import_month.desc(), InsurancePolicyMonthlyRaw.franchise_name).limit(100).all()
-    recent_claims = InsuranceClaimsMonthlyRaw.query.order_by(InsuranceClaimsMonthlyRaw.claim_month.desc(), InsuranceClaimsMonthlyRaw.claims_franchise_name).limit(100).all()
-    imports = InsuranceImportHistory.query.order_by(InsuranceImportHistory.created_at.desc()).limit(12).all()
-    cases = InsuranceClaimCase.query.filter_by(archived=False).order_by(InsuranceClaimCase.created_at.desc()).limit(10).all()
+    recent_policy = _scoped_query(InsurancePolicyMonthlyRaw).order_by(InsurancePolicyMonthlyRaw.import_month.desc(), InsurancePolicyMonthlyRaw.franchise_name).limit(100).all()
+    recent_claims = _scoped_query(InsuranceClaimsMonthlyRaw).order_by(InsuranceClaimsMonthlyRaw.claim_month.desc(), InsuranceClaimsMonthlyRaw.claims_franchise_name).limit(100).all()
+    imports = [] if is_franchise_locked_user() else InsuranceImportHistory.query.order_by(InsuranceImportHistory.created_at.desc()).limit(12).all()
+    cases = _scoped_query(InsuranceClaimCase).filter_by(archived=False).order_by(InsuranceClaimCase.created_at.desc()).limit(10).all()
     return render_template("insurance_claims/index.html", totals=_dashboard_totals(), recent_policy=recent_policy, recent_claims=recent_claims, imports=imports, cases=cases)
 
 
 @insurance_claims_bp.route("/import/policy-data", methods=["POST"])
 @login_required
 def import_policy_data():
+    if is_franchise_locked_user():
+        abort(403)
     denied = _require("insurance_claims:import")
     if denied: return denied
     file = request.files.get("file")
@@ -237,6 +259,8 @@ def import_policy_data():
 @insurance_claims_bp.route("/import/claims", methods=["POST"])
 @login_required
 def import_claims_data():
+    if is_franchise_locked_user():
+        abort(403)
     denied = _require("insurance_claims:import")
     if denied: return denied
     file = request.files.get("file")
@@ -309,7 +333,7 @@ def claims():
     if denied: return denied
     status = request.args.get("status", "")
     q = request.args.get("q", "")
-    query = InsuranceClaimCase.query.filter_by(archived=False)
+    query = _scoped_query(InsuranceClaimCase).filter_by(archived=False)
     if status:
         query = query.filter_by(status=status)
     if q:
@@ -349,7 +373,7 @@ def new_claim():
 def view_claim(claim_id):
     denied = _require("insurance_claims:view")
     if denied: return denied
-    case = InsuranceClaimCase.query.get_or_404(claim_id)
+    case = _get_accessible_claim_or_404(claim_id)
     franchises = _selected_franchise_options()
     if request.method == "POST":
         denied = _require("insurance_claims:edit")
@@ -382,7 +406,7 @@ def view_claim(claim_id):
 def add_note(claim_id):
     denied = _require("insurance_claims:edit")
     if denied: return denied
-    case = InsuranceClaimCase.query.get_or_404(claim_id)
+    case = _get_accessible_claim_or_404(claim_id)
     note = request.form.get("note", "").strip()
     if note:
         db.session.add(InsuranceClaimNote(claim_id=case.id, user_id=current_user.id, user_email=current_user.email, note=note))
@@ -396,7 +420,7 @@ def add_note(claim_id):
 def upload_attachment(claim_id):
     denied = _require("insurance_claims:edit")
     if denied: return denied
-    case = InsuranceClaimCase.query.get_or_404(claim_id)
+    case = _get_accessible_claim_or_404(claim_id)
     file = request.files.get("file")
     if file and file.filename:
         folder = _storage_root() / "claim_attachments" / str(case.id)
@@ -417,6 +441,8 @@ def download_attachment(attachment_id):
     denied = _require("insurance_claims:view")
     if denied: return denied
     attachment = InsuranceClaimAttachment.query.get_or_404(attachment_id)
+    if is_franchise_locked_user():
+        enforce_franchise_access(attachment.claim.franchise_id)
     return send_file(attachment.file_path, as_attachment=True, download_name=attachment.filename)
 
 
@@ -425,10 +451,10 @@ def download_attachment(attachment_id):
 def report_csv():
     denied = _require("insurance_claims:export")
     if denied: return denied
-    rows = InsurancePolicyMonthlyRaw.query.order_by(InsurancePolicyMonthlyRaw.import_month.desc(), InsurancePolicyMonthlyRaw.franchise_name).all()
+    rows = _scoped_query(InsurancePolicyMonthlyRaw).order_by(InsurancePolicyMonthlyRaw.import_month.desc(), InsurancePolicyMonthlyRaw.franchise_name).all()
     def generate():
         yield "Franchise,Month,Retail Premium,Risk Premium,Claims,Claim Count,Claim Ratio\n"
-        claim_lookup = {(c.claims_franchise_name, c.claim_month): c for c in InsuranceClaimsMonthlyRaw.query.all()}
+        claim_lookup = {(c.claims_franchise_name, c.claim_month): c for c in _scoped_query(InsuranceClaimsMonthlyRaw).all()}
         for p in rows:
             c = claim_lookup.get((p.franchise_name, p.import_month))
             claims = Decimal(c.claims_amount or 0) if c else Decimal("0")

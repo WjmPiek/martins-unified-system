@@ -12,7 +12,7 @@ from app.extensions import db
 from app.audit import log_action
 from app.models import MonthlyFigure, Franchise, User
 from app.monthly.routes import recalculate_figures_for_display, calculate_royalty_base, calculate_royalty
-from app.franchise_context import get_selected_franchise, get_accessible_franchises, is_privileged_user, is_franchise_view_mode
+from app.franchise_context import enforce_franchise_access, get_selected_franchise, get_accessible_franchises, is_privileged_user, is_franchise_view_mode
 from app.grouped_royalties import grouped_franchise_sets, ordered_linked_franchises_for_user
 
 royalties_bp = Blueprint("royalties", __name__, url_prefix="/royalties")
@@ -212,6 +212,8 @@ def is_franchise_side_user():
 
 
 def get_ordered_linked_franchises_for_user(user):
+    if user.id == current_user.id and current_user.is_franchise_scoped_user():
+        return current_user.accessible_franchises()
     return ordered_linked_franchises_for_user(user)
 
 
@@ -373,6 +375,7 @@ def update_status(figure_id):
     immutable and cannot be moved back from this screen.
     """
     figure = MonthlyFigure.query.get_or_404(figure_id)
+    enforce_franchise_access(figure.franchise_id)
     requested_status = (request.form.get("status") or "").strip()
     if requested_status not in {"Calculated", "Published"}:
         abort(400)
@@ -396,6 +399,7 @@ def update_status(figure_id):
 @permission_required("royalties:approve")
 def approve(figure_id):
     figure = MonthlyFigure.query.get_or_404(figure_id)
+    enforce_franchise_access(figure.franchise_id)
     figure.status = "Royalty Approved"
     log_action("Royalties", "Approved royalty calculation", f"Period: {figure.period_label}")
     db.session.commit()
@@ -408,6 +412,7 @@ def approve(figure_id):
 @permission_required("royalties:approve")
 def lock(figure_id):
     figure = MonthlyFigure.query.get_or_404(figure_id)
+    enforce_franchise_access(figure.franchise_id)
     figure.status = "Royalty Locked"
     log_action("Royalties", "Locked royalty calculation", f"Period: {figure.period_label}")
     db.session.commit()

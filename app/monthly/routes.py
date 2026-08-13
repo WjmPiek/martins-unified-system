@@ -18,7 +18,7 @@ from flask_login import login_required, current_user
 from app.audit import log_action
 from app.extensions import db
 from app.franchise.routes import get_or_create_franchise
-from app.franchise_context import get_selected_franchise, get_accessible_franchises, is_privileged_user, is_franchise_view_mode
+from app.franchise_context import enforce_franchise_access, get_selected_franchise, get_accessible_franchises, is_franchise_locked_user, is_privileged_user, is_franchise_view_mode
 from app.models import MonthlyFigure, RoyaltyScale, Franchise, User, Role, user_franchises
 
 monthly_bp = Blueprint("monthly", __name__, url_prefix="/monthly-figures")
@@ -127,7 +127,7 @@ IMPORT_FIELDS = [
 
 
 def can_import_monthly_figures():
-    return current_user.has_permission("monthly_figures:import")
+    return not is_franchise_locked_user() and current_user.has_permission("monthly_figures:import")
 
 
 def current_user_role_names():
@@ -160,6 +160,13 @@ def is_franchise_side_user():
 
 
 def get_ordered_linked_franchises_for_user(user):
+    if (
+        has_request_context()
+        and getattr(current_user, "is_authenticated", False)
+        and user.id == current_user.id
+        and current_user.is_franchise_scoped_user()
+    ):
+        return current_user.accessible_franchises()
     linked = list(getattr(user, "assigned_franchises", []) or [])
     if not linked:
         return []
@@ -286,6 +293,12 @@ def permission_required(code):
             return func(*args, **kwargs)
         return wrapper
     return decorator
+
+
+def get_accessible_monthly_figure_or_404(figure_id):
+    monthly_figure = MonthlyFigure.query.get_or_404(figure_id)
+    enforce_franchise_access(monthly_figure.franchise_id)
+    return monthly_figure
 
 
 def parse_decimal(value, default="0"):
@@ -1503,7 +1516,7 @@ def new():
 @login_required
 @permission_required("monthly_figures:edit")
 def edit(figure_id):
-    monthly_figure = MonthlyFigure.query.get_or_404(figure_id)
+    monthly_figure = get_accessible_monthly_figure_or_404(figure_id)
     if monthly_figure.status == "Locked" and not current_user.has_permission("monthly_figures:approve"):
         flash("Locked monthly figures can only be edited by users with Monthly Figures Approve permission.", "warning")
         return redirect(url_for("monthly.index"))
@@ -1539,7 +1552,7 @@ def edit(figure_id):
 @login_required
 @permission_required("monthly_figures:edit")
 def submit(figure_id):
-    monthly_figure = MonthlyFigure.query.get_or_404(figure_id)
+    monthly_figure = get_accessible_monthly_figure_or_404(figure_id)
     monthly_figure.status = "Submitted"
     monthly_figure.submitted_at = datetime.now(timezone.utc)
     log_action("Monthly Figures", "Submitted monthly figures", f"Period: {monthly_figure.period_label}")
@@ -1552,7 +1565,7 @@ def submit(figure_id):
 @login_required
 @permission_required("monthly_figures:approve")
 def approve(figure_id):
-    monthly_figure = MonthlyFigure.query.get_or_404(figure_id)
+    monthly_figure = get_accessible_monthly_figure_or_404(figure_id)
     monthly_figure.status = "Approved"
     monthly_figure.approved_at = datetime.now(timezone.utc)
     log_action("Monthly Figures", "Approved monthly figures", f"Period: {monthly_figure.period_label}")
@@ -1565,7 +1578,7 @@ def approve(figure_id):
 @login_required
 @permission_required("monthly_figures:approve")
 def lock(figure_id):
-    monthly_figure = MonthlyFigure.query.get_or_404(figure_id)
+    monthly_figure = get_accessible_monthly_figure_or_404(figure_id)
     monthly_figure.status = "Locked"
     monthly_figure.locked_at = datetime.now(timezone.utc)
     log_action("Monthly Figures", "Locked monthly figures", f"Period: {monthly_figure.period_label}")
@@ -1579,7 +1592,7 @@ def lock(figure_id):
 @permission_required("monthly_figures:delete")
 def delete(figure_id):
 
-    monthly_figure = MonthlyFigure.query.get_or_404(figure_id)
+    monthly_figure = get_accessible_monthly_figure_or_404(figure_id)
     period = monthly_figure.period_label
     remove_imported_pdfs(monthly_figure.id)
     db.session.delete(monthly_figure)
@@ -1632,7 +1645,7 @@ def export_period_pdf():
 @login_required
 @permission_required("monthly_figures:export")
 def export_pdf(figure_id):
-    monthly_figure = MonthlyFigure.query.get_or_404(figure_id)
+    monthly_figure = get_accessible_monthly_figure_or_404(figure_id)
     from app.reports.pdf import build_monthly_figure_pdf
     pdf_path = build_monthly_figure_pdf(monthly_figure, current_user)
     log_action("Monthly Figures", "Exported PDF", f"Period: {monthly_figure.period_label}")

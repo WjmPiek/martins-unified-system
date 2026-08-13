@@ -15,7 +15,7 @@
 <form class="filter-bar compact-filter-bar" method="get">
     <label>Month<select name="month">{% for value, label in month_options %}<option value="{{ value }}" {% if value == selected_month %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
     <label>Year<select name="year">{% for value in year_options %}<option value="{{ value }}" {% if value == selected_year %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
-    <label class="filter-grow">Franchise<input type="search" name="q" value="{{ search }}" placeholder="Search franchise"></label>
+    {% if not franchise_locked_user %}<label class="filter-grow">Franchise<input type="search" name="q" value="{{ search }}" placeholder="Search franchise"></label>{% endif %}
     <label>Rows<select name="per_page"><option value="10" {% if per_page == 10 %}selected{% endif %}>10</option><option value="20" {% if per_page == 20 %}selected{% endif %}>20</option><option value="50" {% if per_page == 50 %}selected{% endif %}>50</option></select></label>
     <button class="btn" type="submit">Apply</button>
     <a class="btn secondary" href="{{ url_for('performance.targets', month=selected_month, year=selected_year) }}">Reset</a>

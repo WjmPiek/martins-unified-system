@@ -240,7 +240,11 @@ def approvals():
     if not _require("approve"):
         return redirect(url_for("attendance.index"))
     if request.method == "POST":
-        event = AttendanceEvent.query.get_or_404(int(request.form.get("event_id")))
+        staff_ids = [s.id for s in _staff_query().with_entities(AttendanceStaff.id).all()]
+        event = AttendanceEvent.query.filter(
+            AttendanceEvent.id == int(request.form.get("event_id")),
+            AttendanceEvent.staff_id.in_(staff_ids),
+        ).first_or_404()
         action = request.form.get("decision")
         if action == "approve":
             event.approval_status = "approved"; event.approved_by_id = current_user.id; event.approved_at = datetime.now(timezone.utc)
@@ -277,7 +281,11 @@ def leave():
 def leave_decision(request_id, decision):
     if not _require("approve"):
         return redirect(url_for("attendance.leave"))
-    lr = AttendanceLeaveRequest.query.get_or_404(request_id)
+    staff_ids = [s.id for s in _staff_query().with_entities(AttendanceStaff.id).all()]
+    lr = AttendanceLeaveRequest.query.filter(
+        AttendanceLeaveRequest.id == request_id,
+        AttendanceLeaveRequest.staff_id.in_(staff_ids),
+    ).first_or_404()
     if decision in ("approved", "declined"):
         lr.status = decision; lr.decided_by_id = current_user.id; lr.decided_at = datetime.now(timezone.utc); lr.manager_note = request.form.get("manager_note", "")
         db.session.commit(); flash("Leave request updated.", "success")

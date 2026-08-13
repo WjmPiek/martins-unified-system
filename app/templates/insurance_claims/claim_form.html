@@ -4,7 +4,11 @@
 <form method="post" class="professional-form">
   <div class="form-section-card"><h2>Claim Details</h2><div class="form-grid">
     <label>Claim reference</label><input name="claim_ref" value="{{ case.claim_ref if case else '' }}" {% if case %}readonly{% endif %} placeholder="Auto-generated if blank">
+    {% if franchise_locked_user %}
+    <input type="hidden" name="franchise_id" value="{{ selected_franchise.id }}">
+    {% else %}
     <label>Franchise</label><select name="franchise_id"><option value="">Select franchise</option>{% for f in franchises %}<option value="{{ f.id }}" {% if case and case.franchise_id==f.id %}selected{% endif %}>{{ f.business_name }}</option>{% endfor %}</select>
+    {% endif %}
     <label>Claimant name</label><input name="claimant_name" value="{{ case.claimant_name if case else '' }}">
     <label>Policy number</label><input name="policy_number" value="{{ case.policy_number if case else '' }}">
     <label>ID number</label><input name="id_number" value="{{ case.id_number if case else '' }}">

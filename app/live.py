@@ -28,7 +28,7 @@ def _is_admin_finance(user=None):
 
 def _user_franchise_ids(user=None):
     user = user or current_user
-    return [f.id for f in (getattr(user, 'assigned_franchises', []) or []) if getattr(f, 'id', None)]
+    return [f.id for f in (user.accessible_franchises() or []) if getattr(f, 'id', None)]
 
 
 def create_live_event(kind: str, title: str, message: str = '', *, user_id: Optional[int] = None,
@@ -271,7 +271,9 @@ def status():
     ).order_by(LiveNotification.id.desc()).limit(10).all()
 
     event_query = LiveEvent.query.filter(LiveEvent.id > since_id)
-    if not is_admin_finance:
+    if current_user.is_franchise_scoped_user():
+        event_query = event_query.filter(LiveEvent.franchise_id.in_(franchise_ids)) if franchise_ids else event_query.filter(False)
+    elif not is_admin_finance:
         if franchise_ids:
             event_query = event_query.filter(
                 db.or_(
