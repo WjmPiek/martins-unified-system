@@ -3844,3 +3844,111 @@ td input, td select, td textarea {
 .royalties-table tr.grouped-linked-row td:first-child {
   border-left: 4px solid #d6c8e8 !important;
 }
+.mobile-franchise-menu,
+.mobile-franchise-royalty,
+.mobile-manuals-library {
+  display: none;
+}
+
+.franchise-context-card {
+  margin: 8px 10px 14px;
+  padding: 12px;
+  color: #fff;
+  background: rgba(255,255,255,.12);
+  border-radius: 10px;
+}
+.franchise-context-card small,
+.franchise-context-card strong { display: block; }
+.franchise-context-card small { color: rgba(255,255,255,.72); }
+
+@media (max-width: 899px) {
+  body.franchise-user-portal .sidebar-nav > .nav-section,
+  body.franchise-user-portal .sidebar-nav > .nav-utility-links,
+  body.franchise-user-portal .franchise-context-card {
+    display: none !important;
+  }
+
+  body.franchise-user-portal .sidebar-logo {
+    display: flex !important;
+    align-items: center;
+    gap: 10px;
+  }
+
+  body.franchise-user-portal .mobile-franchise-menu {
+    display: grid;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  body.franchise-user-portal .mobile-franchise-menu a {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 48px;
+    padding: 10px 12px;
+    color: #fff;
+    border-radius: 10px;
+  }
+
+  body.franchise-user-portal .mobile-franchise-menu a > span {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: rgba(255,255,255,.14);
+  }
+
+  body.franchise-user-portal .mobile-franchise-menu a.is-active,
+  body.franchise-user-portal .mobile-franchise-menu a:hover {
+    color: var(--primary, #6b4aa0);
+    background: #fff;
+  }
+
+  body.franchise-user-portal .performance-graphs-page .graph-grid-two {
+    grid-template-columns: 1fr !important;
+  }
+
+  body.franchise-user-portal .desktop-royalty-content {
+    display: none !important;
+  }
+
+  body.franchise-user-portal .mobile-franchise-royalty {
+    display: block;
+  }
+
+  .mobile-royalty-header {
+    padding: 24px 18px;
+    color: #fff;
+    text-align: center;
+    background: linear-gradient(135deg, #6b4aa0, #4f347b);
+    border-radius: 14px;
+  }
+  .mobile-royalty-header h1 { margin: 6px 0; font-size: clamp(32px, 11vw, 48px); }
+  .mobile-royalty-header p { margin: 0; color: rgba(255,255,255,.8); }
+  .mobile-royalty-period { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 14px 0; }
+  .mobile-royalty-period label { font-size: 12px; color: #64707d; }
+  .mobile-royalty-period button { grid-column: 1 / -1; }
+  .mobile-royalty-figures { display: grid; gap: 8px; }
+  .mobile-royalty-figures > div { display: flex; justify-content: space-between; gap: 12px; padding: 13px; background: #fff; border: 1px solid #dce2e8; border-radius: 10px; }
+  .mobile-royalty-empty { padding: 20px; text-align: center; background: #fff; border-radius: 10px; }
+
+  body.franchise-user-portal .heatmap-stats-grid,
+  body.franchise-user-portal .heatmap-controls,
+  body.franchise-user-portal .heatmap-records-card,
+  body.franchise-user-portal .content-area > .section-header {
+    display: none !important;
+  }
+  body.franchise-user-portal .heatmap-category-toolbar { display: block !important; }
+  body.franchise-user-portal .heatmap-layout,
+  body.franchise-user-portal .heatmap-main { display: block; }
+  body.franchise-user-portal #heatMap { min-height: calc(100vh - 260px); }
+
+  body.franchise-user-portal .desktop-manuals-content { display: none !important; }
+  body.franchise-user-portal .mobile-manuals-library { display: block; }
+  .mobile-manual-search { width: 100%; margin-bottom: 14px; }
+  .mobile-manual-list { display: grid; gap: 10px; }
+  .mobile-manual-card { display: block; padding: 14px; color: inherit; background: #fff; border: 1px solid #dce2e8; border-radius: 10px; text-decoration: none; }
+  .mobile-manual-card strong, .mobile-manual-card span { display: block; }
+  .mobile-manual-card span { margin-top: 4px; color: #64707d; }
+}

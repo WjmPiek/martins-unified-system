@@ -8,7 +8,7 @@ from openpyxl import load_workbook
 
 from app.audit import log_action
 from app.extensions import db
-from app.franchise_context import get_selected_franchise, is_franchise_view_mode
+from app.franchise_context import enforce_franchise_access, get_selected_franchise, is_franchise_view_mode
 from app.models import Franchise, HeatmapRecord
 
 heatmap_bp = Blueprint("heatmap", __name__, url_prefix="/heat-map")
@@ -17,6 +17,18 @@ PROVINCES = [
     "Eastern Cape", "Free State", "Gauteng", "KwaZulu-Natal", "Limpopo",
     "Mpumalanga", "North West", "Northern Cape", "Western Cape",
 ]
+
+HEATMAP_RECORD_TYPES = {
+    "deceased": "Deceased", "church": "Church", "cemetery": "Cemetery",
+    "crematorium": "Crematorium", "insurance_clients": "Insurance Clients",
+}
+
+
+def normalize_record_type(value):
+    key = clean(value).lower().replace("-", "_").replace(" ", "_")
+    aliases = {"insurance": "insurance_clients", "insurance_client": "insurance_clients", "client": "insurance_clients", "clients": "insurance_clients"}
+    key = aliases.get(key, key)
+    return key if key in HEATMAP_RECORD_TYPES else "deceased"
 
 
 def permission_required(code):
@@ -125,6 +137,8 @@ def parse_heatmap_excel(file_storage, source_filename, franchise_id):
         country = clean(cell(ws, row, headers, "country")) or "South Africa"
         full_address = clean(cell(ws, row, headers, "full address", "fulladdress")) or build_full_address(address, city, province, country)
         relation = clean(cell(ws, row, headers, "relation"))
+        explicit_record_type = clean(cell(ws, row, headers, "record type", "record_type", "map category", "category", "client type", "location type"))
+        record_type = normalize_record_type(explicit_record_type)
 
         if has_relation_column and relation.upper() != "MEM":
             skipped_non_mem += 1
@@ -150,7 +164,7 @@ def parse_heatmap_excel(file_storage, source_filename, franchise_id):
             next_of_kin_name=clean(cell(ws, row, headers, "next of kin name", "nok name")),
             next_of_kin_surname=clean(cell(ws, row, headers, "next of kin surname", "nok surname")),
             relationship=clean(cell(ws, row, headers, "relationship")),
-            relation=relation,
+            relation=f"MAP:{record_type}" if explicit_record_type else relation,
             contact_number=clean(cell(ws, row, headers, "contact number", "cell number", "phone")),
             source_filename=source_filename,
             created_by_id=current_user.id,
@@ -170,6 +184,7 @@ def index():
         selected_franchise=selected,
         provinces=PROVINCES,
         can_modify_heatmap=can_modify_heatmap(),
+        record_types=HEATMAP_RECORD_TYPES,
         google_maps_api_key=current_app.config.get("GOOGLE_MAPS_API_KEY", ""),
     )
 
@@ -206,8 +221,8 @@ def import_excel():
     franchise_id = selected_or_requested_franchise_id()
     if not franchise_id and accessible_franchise_ids():
         franchise_id = request.form.get("franchise_id", type=int) or None
-    if franchise_id and franchise_id not in accessible_franchise_ids() and not current_user.has_permission("franchise_management:view"):
-        abort(403)
+    if franchise_id:
+        enforce_franchise_access(franchise_id)
     try:
         records, skipped_non_mem, skipped_blank = parse_heatmap_excel(file, filename, franchise_id)
         if not records:
@@ -235,13 +250,12 @@ def save_record():
     record = HeatmapRecord.query.get(record_id) if record_id else HeatmapRecord(created_by_id=current_user.id)
     if not record:
         abort(404)
-    if record.franchise_id and record.franchise_id not in accessible_franchise_ids() and not current_user.has_permission("franchise_management:view"):
-        abort(403)
+    if record.franchise_id:
+        enforce_franchise_access(record.franchise_id)
     franchise_id = payload.get("franchiseId") or selected_or_requested_franchise_id()
     if franchise_id:
         franchise_id = int(franchise_id)
-        if franchise_id not in accessible_franchise_ids() and not current_user.has_permission("franchise_management:view"):
-            abort(403)
+        enforce_franchise_access(franchise_id)
     record.franchise_id = franchise_id
     mapping = {
         "mf_file": "mfFile", "deceased_name": "deceasedName", "deceased_surname": "deceasedSurname",
@@ -251,6 +265,8 @@ def save_record():
     }
     for attr, key in mapping.items():
         setattr(record, attr, clean(payload.get(key)))
+    if payload.get("recordType"):
+        record.relation = f"MAP:{normalize_record_type(payload.get('recordType'))}"
     record.latitude = number(payload.get("latitude"))
     record.longitude = number(payload.get("longitude"))
     record.weight = number(payload.get("weight")) or 1
@@ -268,8 +284,7 @@ def delete_record(record_id):
     if not can_modify_heatmap():
         abort(403)
     record = HeatmapRecord.query.get_or_404(record_id)
-    if record.franchise_id and record.franchise_id not in accessible_franchise_ids() and not current_user.has_permission("franchise_management:view"):
-        abort(403)
+    enforce_franchise_access(record.franchise_id)
     db.session.delete(record)
     db.session.commit()
     log_action("Heat Map", "Deleted heat map record", record.mf_file or record.full_address or str(record_id))

@@ -25,6 +25,13 @@ user_franchises = db.Table(
     db.Column("franchise_id", db.Integer, db.ForeignKey("franchises.id"), primary_key=True),
     db.Column("is_primary", db.Boolean, default=False, nullable=False),
 )
+
+ADMIN_ROLE_NAMES = {"Admin", "Super Admin"}
+FRANCHISE_SCOPED_ROLE_NAMES = {
+    "Franchise User", "Franchise Manager", "Franchise Employee", "Franchise Agent",
+    "Manager", "Employee", "Agent", "Read Only User",
+}
+
 class Role(db.Model):
     __tablename__ = "roles"
     id = db.Column(db.Integer, primary_key=True)
@@ -104,7 +111,26 @@ class User(UserMixin, db.Model):
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
 
+    def is_admin_user(self):
+        return any(role.name in ADMIN_ROLE_NAMES for role in self.roles)
+
+    def is_franchise_scoped_user(self):
+        """Franchise-side roles remain tenant scoped even if mis-permissioned."""
+        return not self.is_admin_user() and any(role.name in FRANCHISE_SCOPED_ROLE_NAMES for role in self.roles)
+
+    def assigned_franchise_id(self):
+        return db.session.execute(
+            db.select(user_franchises.c.franchise_id)
+            .where(user_franchises.c.user_id == self.id)
+            .order_by(user_franchises.c.is_primary.desc(), user_franchises.c.franchise_id.asc())
+            .limit(1)
+        ).scalar()
+
     def accessible_franchises(self):
+        if self.is_franchise_scoped_user():
+            franchise_id = self.assigned_franchise_id()
+            franchise = Franchise.query.get(franchise_id) if franchise_id else None
+            return [franchise] if franchise else []
         # Global franchise access is controlled by permissions, not hardcoded role names.
         # Users with Franchise Management view/manage can see all franchises.
         if self.has_permission("franchise_management:view") or self.has_permission("franchise_management:manage"):
@@ -116,6 +142,12 @@ class User(UserMixin, db.Model):
         return []
 
     def can_access_franchise(self, franchise_id):
+        try:
+            franchise_id = int(franchise_id)
+        except (TypeError, ValueError):
+            return False
+        if self.is_franchise_scoped_user():
+            return franchise_id == self.assigned_franchise_id()
         # Access to an individual franchise follows the same permission model.
         if self.has_permission("franchise_management:view") or self.has_permission("franchise_management:manage"):
             return True
@@ -525,6 +557,16 @@ class HeatmapRecord(db.Model):
     franchise = db.relationship("Franchise", backref=db.backref("heatmap_records", lazy=True, cascade="all, delete-orphan"))
     created_by = db.relationship("User", backref=db.backref("heatmap_records_created", lazy=True))
 
+    @property
+    def map_record_type(self):
+        """Read category markers from the existing relation field."""
+        relation = (self.relation or "").strip().lower()
+        if relation.startswith("map:"):
+            value = relation.split(":", 1)[1].strip().replace("-", "_").replace(" ", "_")
+            if value in {"deceased", "church", "cemetery", "crematorium", "insurance_clients"}:
+                return value
+        return "deceased"
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -546,6 +588,7 @@ class HeatmapRecord(db.Model):
             "nextOfKinSurname": self.next_of_kin_surname or "",
             "relationship": self.relationship or "",
             "relation": self.relation or "",
+            "recordType": self.map_record_type,
             "contactNumber": self.contact_number or "",
             "sourceFilename": self.source_filename or "",
             "updatedAt": self.updated_at.isoformat() if self.updated_at else "",

@@ -1,4 +1,4 @@
-from flask import g, has_request_context, session
+from flask import abort, g, has_request_context, session
 from flask_login import current_user
 from app.models import Franchise
 
@@ -6,7 +6,23 @@ from app.models import Franchise
 def is_privileged_user():
     if not has_request_context() or not current_user or not current_user.is_authenticated:
         return False
+    if current_user.is_franchise_scoped_user():
+        return False
     return current_user.has_permission("franchise_management:view") or current_user.has_permission("franchise_management:manage")
+
+
+def is_franchise_locked_user():
+    return bool(has_request_context() and current_user and current_user.is_authenticated and current_user.is_franchise_scoped_user())
+
+
+def get_locked_franchise_id():
+    return current_user.assigned_franchise_id() if is_franchise_locked_user() else None
+
+
+def enforce_franchise_access(franchise_id):
+    if not current_user.can_access_franchise(franchise_id):
+        abort(403)
+    return int(franchise_id)
 
 
 def get_accessible_franchises():
@@ -32,6 +48,12 @@ def get_selected_franchise():
     if not franchises:
         return None
 
+    if is_franchise_locked_user():
+        selected = franchises[0]
+        session["selected_franchise_id"] = selected.id
+        session["franchise_view_mode"] = True
+        return selected
+
     selected_id = session.get("selected_franchise_id")
     if selected_id:
         for franchise in franchises:
@@ -45,6 +67,8 @@ def get_selected_franchise():
 
 def set_selected_franchise(franchise_id, franchise_view_mode=False):
     if not has_request_context() or not current_user or not current_user.is_authenticated:
+        return False
+    if is_franchise_locked_user() and franchise_id != get_locked_franchise_id():
         return False
     if current_user.can_access_franchise(franchise_id):
         session["selected_franchise_id"] = franchise_id
