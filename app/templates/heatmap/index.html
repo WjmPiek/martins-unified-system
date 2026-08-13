@@ -11,6 +11,14 @@
   <div class="alert warning">GOOGLE_MAPS_API_KEY is not configured. The map will not load until this environment variable is added locally and on Render.</div>
 {% endif %}
 
+<section class="form-section-card heatmap-category-toolbar">
+  <label for="heatRecordTypeFilter"><strong>Show map data</strong></label>
+  <select id="heatRecordTypeFilter">
+    <option value="">All categories</option>
+    {% for value, label in record_types.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
+  </select>
+</section>
+
 <section class="heatmap-stats-grid">
   <article class="metric-card"><span>Total records</span><strong id="heatTotal">0</strong></article>
   <article class="metric-card"><span>Mapped</span><strong id="heatMapped">0</strong></article>
@@ -82,7 +90,7 @@
       <div id="heatMap"></div>
     </div>
 
-    <div class="form-section-card">
+    <div class="form-section-card heatmap-records-card">
       <h2>Current records</h2>
       <div class="table-responsive heatmap-record-table-wrap">
         <table class="system-report-table heatmap-record-table">

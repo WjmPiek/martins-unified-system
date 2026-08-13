@@ -287,7 +287,9 @@ After deploying the updated code, run database migrations before using the modul
 flask db upgrade
 ```
 
-The Heat Map import accepts Excel files with columns such as MF File, Deceased Name, Deceased Surname, DOD, Address, City, Province, Country, Full Address, Latitude, Longitude, Weight, Next of Kin Name, Next of Kin Surname, Relationship, Relation, and Contact Number. If a `Relation` column exists, only `MEM` rows are imported for client-density accuracy.
+The Heat Map import accepts Excel files with columns such as MF File, Deceased Name, Deceased Surname, DOD, Address, City, Province, Country, Full Address, Latitude, Longitude, Weight, Next of Kin Name, Next of Kin Surname, Relationship, Relation, Contact Number, and Category. Category (also accepted as Record Type, Map Category, Client Type, or Location Type) supports `Deceased`, `Church`, `Cemetery`, `Crematorium`, and `Insurance Clients`. If a `Relation` column exists, only `MEM` rows are imported for client-density accuracy. Existing imports without a category remain under Deceased.
+
+On phones, franchise-scoped users receive a focused portal containing Performance Graph, Leaderboard, Royalty, and any activated Heat Map or Manuals modules. The Royalty screen shows only the selected month's amount due and figures; Heat Map shows only the user's scoped map and category selector; Manuals shows the published library with search.
 
 
 ## V91 Static Logo Cache

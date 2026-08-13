@@ -18,6 +18,28 @@ PROVINCES = [
     "Mpumalanga", "North West", "Northern Cape", "Western Cape",
 ]
 
+HEATMAP_RECORD_TYPES = {
+    "deceased": "Deceased",
+    "church": "Church",
+    "cemetery": "Cemetery",
+    "crematorium": "Crematorium",
+    "insurance_clients": "Insurance Clients",
+}
+
+
+def normalize_record_type(value):
+    key = clean(value).lower().replace("-", "_").replace(" ", "_")
+    aliases = {
+        "insurance": "insurance_clients",
+        "insurance_client": "insurance_clients",
+        "insurance_clients": "insurance_clients",
+        "client": "insurance_clients",
+        "clients": "insurance_clients",
+        "deceased_client": "deceased",
+    }
+    key = aliases.get(key, key)
+    return key if key in HEATMAP_RECORD_TYPES else "deceased"
+
 
 def permission_required(code):
     def decorator(func):
@@ -125,6 +147,11 @@ def parse_heatmap_excel(file_storage, source_filename, franchise_id):
         country = clean(cell(ws, row, headers, "country")) or "South Africa"
         full_address = clean(cell(ws, row, headers, "full address", "fulladdress")) or build_full_address(address, city, province, country)
         relation = clean(cell(ws, row, headers, "relation"))
+        explicit_record_type = clean(cell(
+            ws, row, headers, "record type", "record_type", "map category",
+            "category", "client type", "location type"
+        ))
+        record_type = normalize_record_type(explicit_record_type)
 
         if has_relation_column and relation.upper() != "MEM":
             skipped_non_mem += 1
@@ -150,7 +177,7 @@ def parse_heatmap_excel(file_storage, source_filename, franchise_id):
             next_of_kin_name=clean(cell(ws, row, headers, "next of kin name", "nok name")),
             next_of_kin_surname=clean(cell(ws, row, headers, "next of kin surname", "nok surname")),
             relationship=clean(cell(ws, row, headers, "relationship")),
-            relation=relation,
+            relation=f"MAP:{record_type}" if explicit_record_type else relation,
             contact_number=clean(cell(ws, row, headers, "contact number", "cell number", "phone")),
             source_filename=source_filename,
             created_by_id=current_user.id,
@@ -170,6 +197,7 @@ def index():
         selected_franchise=selected,
         provinces=PROVINCES,
         can_modify_heatmap=can_modify_heatmap(),
+        record_types=HEATMAP_RECORD_TYPES,
         google_maps_api_key=current_app.config.get("GOOGLE_MAPS_API_KEY", ""),
     )
 
@@ -181,6 +209,7 @@ def data():
     records = scoped_query().order_by(HeatmapRecord.city.asc(), HeatmapRecord.mf_file.asc()).all()
     province_counts = Counter(record.province for record in records if record.province)
     city_counts = Counter(record.city for record in records if record.city)
+    type_counts = Counter(record.map_record_type for record in records)
     mapped = sum(1 for record in records if record.latitude is not None and record.longitude is not None)
     return jsonify({
         "records": [record.to_dict() for record in records],
@@ -190,6 +219,7 @@ def data():
             "unmapped": len(records) - mapped,
             "province": dict(province_counts),
             "cities": dict(city_counts.most_common(10)),
+            "recordTypes": dict(type_counts),
         }
     })
 
@@ -250,6 +280,8 @@ def save_record():
     }
     for attr, key in mapping.items():
         setattr(record, attr, clean(payload.get(key)))
+    if payload.get("recordType"):
+        record.relation = f"MAP:{normalize_record_type(payload.get('recordType'))}"
     record.latitude = number(payload.get("latitude"))
     record.longitude = number(payload.get("longitude"))
     record.weight = number(payload.get("weight")) or 1

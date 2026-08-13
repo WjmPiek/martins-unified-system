@@ -560,6 +560,20 @@ class HeatmapRecord(db.Model):
     franchise = db.relationship("Franchise", backref=db.backref("heatmap_records", lazy=True, cascade="all, delete-orphan"))
     created_by = db.relationship("User", backref=db.backref("heatmap_records_created", lazy=True))
 
+    @property
+    def map_record_type(self):
+        """Return the mobile map category without requiring a database migration.
+
+        New category-aware imports use a MAP:<category> marker in the existing
+        relation field. Legacy MEM/deceased rows remain deceased records.
+        """
+        relation = (self.relation or "").strip().lower()
+        if relation.startswith("map:"):
+            value = relation.split(":", 1)[1].strip().replace("-", "_").replace(" ", "_")
+            if value in {"deceased", "church", "cemetery", "crematorium", "insurance_clients"}:
+                return value
+        return "deceased"
+
     def to_dict(self):
         return {
             "id": self.id,
@@ -581,6 +595,7 @@ class HeatmapRecord(db.Model):
             "nextOfKinSurname": self.next_of_kin_surname or "",
             "relationship": self.relationship or "",
             "relation": self.relation or "",
+            "recordType": self.map_record_type,
             "contactNumber": self.contact_number or "",
             "sourceFilename": self.source_filename or "",
             "updatedAt": self.updated_at.isoformat() if self.updated_at else "",
