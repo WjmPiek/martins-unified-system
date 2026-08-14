@@ -100,16 +100,33 @@ def run_month_end_import_pipeline(
     blocking_validation_count = 0
     validation_month = periods[0][0] if periods else None
     validation_year = periods[0][1] if periods else None
+    # Linked branches are billed using their Franchise User group's explicit
+    # main franchise agreement and scale. Validate that billing source once,
+    # instead of incorrectly requiring a separate scale on every linked branch.
+    from app.grouped_royalties import grouped_franchise_sets
+    billing_franchise_by_id = {}
+    affected_franchise_ids = set(ids)
+    for group in (grouped_franchise_sets(ids) if ids else []):
+        for linked_franchise in group["linked"]:
+            billing_franchise_by_id[linked_franchise.id] = group["main"]
+            affected_franchise_ids.add(linked_franchise.id)
+    report['calculation_franchise_count'] = len(affected_franchise_ids)
+
+    validated_billing_ids = set()
     for franchise in franchises:
-        validation = _franchise_warning(franchise, month=validation_month, year=validation_year)
+        billing_franchise = billing_franchise_by_id.get(franchise.id, franchise)
+        if billing_franchise.id in validated_billing_ids:
+            continue
+        validated_billing_ids.add(billing_franchise.id)
+        validation = _franchise_warning(billing_franchise, month=validation_month, year=validation_year)
         warnings = list(validation.get('warnings') or [])
         blocking = list(validation.get('blocking_errors') or [])
         if warnings or blocking:
             if blocking:
                 blocking_validation_count += 1
             report['warnings'].append({
-                'franchise_id': franchise.id,
-                'franchise': franchise.business_name,
+                'franchise_id': billing_franchise.id,
+                'franchise': billing_franchise.business_name,
                 'warnings': warnings,
                 'blocking_errors': blocking,
                 'blocking': bool(blocking),
@@ -128,12 +145,12 @@ def run_month_end_import_pipeline(
 
     _stage(progress_job, 70, 'Stage 2/6: loading imported monthly rows...')
     rows = []
-    if periods and ids:
+    if periods and affected_franchise_ids:
         clauses = []
         for month, year in periods:
             clauses.append(db.and_(MonthlyFigure.month == month, MonthlyFigure.year == year))
         rows = MonthlyFigure.query.filter(
-            MonthlyFigure.franchise_id.in_(ids),
+            MonthlyFigure.franchise_id.in_(affected_franchise_ids),
             db.or_(*clauses),
         ).all()
     report['saved_rows'] = len(rows)
@@ -166,7 +183,11 @@ def run_month_end_import_pipeline(
         report['recalculated_rows'] += 1
         if Decimal(monthly_figure.royalty_amount or 0) > 0 or Decimal(monthly_figure.royalty_percentage or 0) > 0:
             report['royalties_calculated'] += 1
-        if result and (result.warnings or result.blocking_errors):
+        billing_franchise = billing_franchise_by_id.get(monthly_figure.franchise_id)
+        grouped_secondary = bool(
+            billing_franchise and billing_franchise.id != monthly_figure.franchise_id
+        )
+        if result and (result.warnings or result.blocking_errors) and not grouped_secondary:
             report['royalty_engine_reviews'].append(result.to_dict())
             if result.blocking_errors:
                 report['status'] = 'needs_review'
@@ -182,9 +203,9 @@ def run_month_end_import_pipeline(
                     'groups': grouped_result.get('groups', 0),
                     'rows': grouped_result.get('rows', 0),
                 })
-        if report['grouped_royalties']:
-            for monthly_figure in rows:
-                snapshot_monthly_figure(monthly_figure, commit=False)
+        # apply_grouped_royalties_for_period also synchronizes the existing
+        # snapshots. Re-running snapshot_monthly_figure here would recalculate
+        # each branch separately and overwrite the correct grouped result.
     except Exception as grouped_exc:
         current_app.logger.exception('Grouped royalty calculation failed: %s', grouped_exc)
         report['status'] = 'needs_review'
@@ -224,21 +245,21 @@ def run_month_end_import_pipeline(
     try:
         from app.live import publish_monthly_import
         for month, year in periods:
-            publish_monthly_import(month, year, ids, import_job=progress_job, source='month_end_import', report=report)
+            publish_monthly_import(month, year, affected_franchise_ids, import_job=progress_job, source='month_end_import', report=report)
     except Exception as live_exc:
         current_app.logger.exception('Could not publish live import event: %s', live_exc)
 
-    if periods and ids:
+    if periods and affected_franchise_ids:
         _stage(progress_job, 96, 'Stage 6/6: refreshing performance graphs and leaderboard cache...')
         try:
             from app.performance.service import warm_performance_cache_for_period
             from app.live import publish_trusted_financials
             for month, year in periods:
-                refreshed = warm_performance_cache_for_period(month, year, list(ids), mode='annual_gross_scale')
+                refreshed = warm_performance_cache_for_period(month, year, list(affected_franchise_ids), mode='annual_gross_scale')
                 report['performance_rows'] += int(refreshed.get('performance_rows', 0) or 0)
                 report['performance_cache_rows'] = int(report.get('performance_cache_rows', 0) or 0) + int(refreshed.get('cache_rows', 0) or 0)
                 if report['status'] == 'completed':
-                    publish_trusted_financials(month, year, ids, import_job=progress_job, source='month_end_import', report=report)
+                    publish_trusted_financials(month, year, affected_franchise_ids, import_job=progress_job, source='month_end_import', report=report)
             report['published'] = True
             report['trusted_financials'] = report['status'] == 'completed'
             if report['status'] == 'completed':

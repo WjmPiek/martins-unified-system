@@ -1804,12 +1804,13 @@ def import_contract_summary():
             if owner_created:
                 created_or_linked_users += 1
 
-        # Recalculate existing monthly figures because the agreement date controls
-        # whether the franchise uses Gross = New Gross Method or Gross = Old.
-        from app.monthly.routes import recalculate_monthly_figure
-        for franchise in Franchise.query.all():
-            for figure in MonthlyFigure.query.filter_by(franchise_id=franchise.id).all():
-                recalculate_monthly_figure(figure)
+        # Recalculate through the single royalty service so agreement method,
+        # percentage brackets, snapshots and grouped Franchise User billing are
+        # all refreshed in the correct order.
+        from app.royalty_management import recalculate_royalties_for_period
+        periods = db.session.query(MonthlyFigure.month, MonthlyFigure.year).distinct().all()
+        for figure_month, figure_year in periods:
+            recalculate_royalties_for_period(figure_month, figure_year, commit=False)
 
         db.session.commit()
         update_import_job(job, job.total_steps, f"Import complete. {matched} franchises matched; {updated_scales} royalty scales updated.", status="completed", commit=True)

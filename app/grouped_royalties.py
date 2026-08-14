@@ -1,4 +1,5 @@
 from decimal import Decimal
+import json
 import re
 from types import SimpleNamespace
 
@@ -6,7 +7,10 @@ from app.extensions import db
 from app.models import Franchise, MonthlyFigure, User, user_franchises
 
 
-FRANCHISE_SIDE_ROLES = {"Franchise User", "Franchise Manager", "Read Only User"}
+# Only the owner-level Franchise User defines a billing group. Managers and
+# read-only users can share branch access, but their links must never create a
+# second royalty group for the same branches.
+FRANCHISE_SIDE_ROLES = {"Franchise User"}
 SUM_MONEY_FIELDS = (
     "funeral_receipts",
     "claim_receipts",
@@ -67,14 +71,18 @@ def _ordered_linked_franchises_for_user(user):
         .where(user_franchises.c.is_primary == True)
     ).scalar()
     linked_sorted = sorted(linked, key=lambda item: item.business_name or "")
-    identity_main = _identity_matched_main_franchise(user, linked_sorted)
-    if identity_main:
-        rest = [item for item in linked_sorted if item.id != identity_main.id]
-        return [identity_main] + rest
+    # The grouped-franchise import writes the contractual main branch to
+    # user_franchises.is_primary. That explicit setting is authoritative.
     if primary_id:
         primary = [item for item in linked_sorted if item.id == primary_id]
         rest = [item for item in linked_sorted if item.id != primary_id]
         return primary + rest
+    # Identity matching is retained only for legacy links that pre-date the
+    # is_primary flag.
+    identity_main = _identity_matched_main_franchise(user, linked_sorted)
+    if identity_main:
+        rest = [item for item in linked_sorted if item.id != identity_main.id]
+        return [identity_main] + rest
     return linked_sorted
 
 
@@ -85,6 +93,7 @@ def ordered_linked_franchises_for_user(user):
 def grouped_franchise_sets(touched_franchise_ids=None):
     touched = {int(item) for item in (touched_franchise_ids or []) if item}
     groups = []
+    claimed_franchise_ids = set()
     users = User.query.all()
     for user in users:
         role_names = {role.name for role in getattr(user, "roles", [])}
@@ -96,7 +105,12 @@ def grouped_franchise_sets(touched_franchise_ids=None):
         linked_ids = {franchise.id for franchise in linked}
         if touched and not (linked_ids & touched):
             continue
+        # Corrupt/legacy access links can place one branch under more than one
+        # owner. Never bill it twice; the first explicit owner group wins.
+        if linked_ids & claimed_franchise_ids:
+            continue
         groups.append({"user": user, "main": linked[0], "linked": linked})
+        claimed_franchise_ids.update(linked_ids)
     return groups
 
 
@@ -113,6 +127,53 @@ def _append_note(row, note):
     if note in existing:
         return
     row.notes = f"{existing}\n{note}".strip() if existing else note
+
+
+def _sync_grouped_snapshot(row, main, result, *, is_main):
+    """Keep audit snapshots aligned with the final grouped billing result."""
+    from app.models import RoyaltyCalculationSnapshot
+
+    snapshot = RoyaltyCalculationSnapshot.query.filter_by(monthly_figure_id=row.id).first()
+    if not snapshot:
+        return
+
+    diagnostics = {}
+    try:
+        diagnostics = json.loads(snapshot.diagnostics_json or "{}")
+    except (TypeError, ValueError):
+        diagnostics = {}
+    diagnostics.update({
+        "grouped_royalty": True,
+        "group_main_franchise_id": main.id,
+        "group_main_franchise_name": main.business_name,
+        "group_role": "main" if is_main else "linked_branch",
+    })
+
+    if is_main:
+        snapshot.royalty_method = result.method
+        snapshot.method_source = f"group_main:{result.method_source}"
+        snapshot.royalty_base = row.gross_turnover
+        snapshot.royalty_percentage = row.royalty_percentage
+        snapshot.royalty_amount = row.royalty_amount
+        snapshot.minimum_royalty_amount = result.minimum_royalty_amount
+        snapshot.minimum_royalty_applied = row.minimum_royalty_applied
+        snapshot.scale_source_franchise_id = result.scale_source_franchise_id
+        snapshot.scale_source_franchise_name = result.scale_source_franchise_name or ""
+        snapshot.status = "needs_review" if result.blocking_errors else "calculated"
+        diagnostics["warnings"] = result.warnings
+        diagnostics["blocking_errors"] = result.blocking_errors
+    else:
+        snapshot.method_source = f"grouped_under:{main.id}"
+        snapshot.royalty_percentage = Decimal("0")
+        snapshot.royalty_amount = Decimal("0")
+        snapshot.minimum_royalty_amount = Decimal("0")
+        snapshot.minimum_royalty_applied = False
+        snapshot.scale_source_franchise_id = main.id
+        snapshot.scale_source_franchise_name = main.business_name or ""
+        snapshot.status = "needs_review" if result.blocking_errors else "calculated"
+        diagnostics["warnings"] = [f"Royalty billed under main franchise: {main.business_name}."]
+        diagnostics["blocking_errors"] = result.blocking_errors
+    snapshot.diagnostics_json = json.dumps(diagnostics, default=str)
 
 
 def apply_grouped_royalties_for_period(month, year, touched_franchise_ids=None):
@@ -168,6 +229,7 @@ def apply_grouped_royalties_for_period(month, year, touched_franchise_ids=None):
         main_row.royalty_amount = grouped_row.royalty_amount
         main_row.minimum_royalty_applied = grouped_row.minimum_royalty_applied
         main_row.royalty_review = result
+        _sync_grouped_snapshot(main_row, main, result, is_main=True)
         grouped += 1
         updated += 1
 
@@ -178,5 +240,6 @@ def apply_grouped_royalties_for_period(month, year, touched_franchise_ids=None):
             row.royalty_amount = Decimal("0")
             row.minimum_royalty_applied = False
             _append_note(row, f"Royalty grouped under main franchise: {main.business_name}.")
+            _sync_grouped_snapshot(row, main, result, is_main=False)
             updated += 1
     return {"groups": grouped, "rows": updated}

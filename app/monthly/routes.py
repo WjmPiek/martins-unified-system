@@ -538,8 +538,31 @@ def extract_pdf_text(file_storage):
         reader = PdfReader(str(tmp_path))
         text_parts = []
         for page in reader.pages:
-            text_parts.append(page.extract_text() or "")
-        return "\n".join(text_parts), tmp_path
+            try:
+                page_text = page.extract_text(extraction_mode="layout") or ""
+            except TypeError:
+                page_text = page.extract_text() or ""
+            text_parts.append(page_text)
+        text = "\n".join(text_parts)
+
+        # Some producer-generated PDFs are read more accurately by pdfplumber.
+        # Use it only as a fallback when pypdf produced no meaningful report
+        # labels, keeping the normal import fast.
+        if not re.search(r"Funeral Receipts|Insurance Receipts|Total MF Files", text, re.I):
+            try:
+                import pdfplumber
+                with pdfplumber.open(str(tmp_path)) as pdf:
+                    alternate = "\n".join((page.extract_text(layout=True) or "") for page in pdf.pages)
+                if len(normalise_text(alternate)) > len(normalise_text(text)):
+                    text = alternate
+            except Exception:
+                pass
+
+        if not normalise_text(text):
+            raise ValueError(
+                "No readable text was found in this PDF. Please upload the original Month-End Report PDF, not a scanned image."
+            )
+        return text, tmp_path
     except Exception:
         if tmp_path.exists():
             tmp_path.unlink()
@@ -600,6 +623,39 @@ def amount_after_label(text, label, default="0"):
     return parse_decimal(match.group(1))
 
 
+PDF_MONEY_PATTERN = r"-?\s*R?\s*\d[\d\s,.]*(?:[,.]\d{1,2})?"
+
+
+def parse_pdf_decimal(value, default="0"):
+    """Parse both 1,234.56 and South African 1 234,56 PDF amounts."""
+    raw = str(value if value is not None else default).replace("R", "").replace("\xa0", " ").strip()
+    raw = re.sub(r"\s+", "", raw)
+    if "," in raw and "." not in raw:
+        if raw.count(",") == 1 and len(raw.rsplit(",", 1)[1]) <= 2:
+            raw = raw.replace(",", ".")
+        else:
+            raw = raw.replace(",", "")
+    elif "," in raw and "." in raw:
+        if raw.rfind(",") > raw.rfind("."):
+            raw = raw.replace(".", "").replace(",", ".")
+        else:
+            raw = raw.replace(",", "")
+    try:
+        return Decimal(raw or default)
+    except (InvalidOperation, ValueError):
+        return Decimal(default)
+
+
+def pdf_amount_after_label(text, label_pattern, default="0", allow_parenthetical=False):
+    between = r"\s*(?:\([^)]*\)\s*)?" if allow_parenthetical else r"\s*"
+    match = re.search(
+        rf"{label_pattern}{between}:?\s*({PDF_MONEY_PATTERN})",
+        text,
+        flags=re.IGNORECASE,
+    )
+    return parse_pdf_decimal(match.group(1), default) if match else Decimal(default)
+
+
 def int_after_label(text, label, default=0):
     pattern = re.escape(label) + r"\s*:?\s*(\d+)"
     match = re.search(pattern, text, flags=re.IGNORECASE)
@@ -632,29 +688,31 @@ def parse_pdf_values(text):
 
     clean = normalise_text(text)
 
-    values["funeral_receipts"] = amount_after_label(clean, "Funeral Receipts - Claim Refund (R 0.00)")
-    if values["funeral_receipts"] == 0:
-        match = re.search(
-            r"Funeral Receipts\s*-\s*Claim Refund\s*\([^)]*\)\s*(-?\s*R?\s*\d[\d\s,]*(?:\.\d{1,2})?)",
-            clean,
-            flags=re.IGNORECASE,
-        )
-        if match:
-            values["funeral_receipts"] = parse_decimal(match.group(1))
+    values["funeral_receipts"] = pdf_amount_after_label(
+        clean,
+        r"Funeral\s+Receipts\s*-\s*Claim\s+Refund",
+        allow_parenthetical=True,
+    )
 
-    values["society_receipts"] = amount_after_label(clean, "Society Receipts")
-    values["cash_sales"] = amount_after_label(clean, "Cash Sale Receipts")
+    values["society_receipts"] = pdf_amount_after_label(clean, r"Society\s+Receipts")
+    values["cash_sales"] = pdf_amount_after_label(clean, r"Cash\s+Sale\s+Receipts")
     if values["cash_sales"] == 0:
-        values["cash_sales"] = amount_after_label(clean, "Cash Sales Receipts")
-    values["tombstone_receipts"] = amount_after_label(clean, "Tombstone Receipts")
+        values["cash_sales"] = pdf_amount_after_label(clean, r"Cash\s+Sales\s+Receipts")
+    values["tombstone_receipts"] = pdf_amount_after_label(clean, r"Tombstone\s+Receipts")
 
     # Use the main Insurance Receipts line, excluding the captured-in-period line.
-    match = re.search(r"\bInsurance Receipts\s+(-?\s*R?\s*\d[\d\s,]*(?:\.\d{1,2})?)", clean, flags=re.IGNORECASE)
-    if match:
-        values["insurance_receipts"] = parse_decimal(match.group(1))
+    for match in re.finditer(
+        rf"\bInsurance\s+Receipts\b\s*:?[ ]*({PDF_MONEY_PATTERN})",
+        clean,
+        flags=re.IGNORECASE,
+    ):
+        # A "Captured in Period" line cannot match this expression because a
+        # number must immediately follow the label.
+        values["insurance_receipts"] = parse_pdf_decimal(match.group(1))
+        break
 
     # PDF source for OBO Services Receipts = MF OBO Receipts.
-    values["obo_service_receipts"] = amount_after_label(clean, "MF OBO Receipts")
+    values["obo_service_receipts"] = pdf_amount_after_label(clean, r"MF\s+OBO\s+Receipts")
 
     # Removed field.
     values["claim_receipts"] = Decimal("0")
@@ -662,8 +720,21 @@ def parse_pdf_values(text):
     # Manual field starts as zero.
     values["insurance_payover"] = Decimal("0")
 
-    values["insurance_joinings"] = int_after_label(clean, "Total Number")
-    values["mf_files"] = int_after_label(clean, "(1) Total MF Files")
+    joinings_match = re.search(
+        r"NEW\s+JOININGS.{0,800}?Total\s+Number\s*:?[ ]*(\d+)",
+        clean,
+        flags=re.IGNORECASE,
+    )
+    if not joinings_match:
+        joinings_match = re.search(r"Total\s+Number\s*:?[ ]*(\d+)", clean, flags=re.IGNORECASE)
+    values["insurance_joinings"] = parse_int(joinings_match.group(1)) if joinings_match else 0
+
+    mf_files_match = re.search(
+        r"(?:\(\s*1\s*\)\s*)?Total\s+MF\s+Files\s*:?[ ]*(\d+)",
+        clean,
+        flags=re.IGNORECASE,
+    )
+    values["mf_files"] = parse_int(mf_files_match.group(1)) if mf_files_match else 0
 
     # Calculated values.
     values["sales"] = (
@@ -685,6 +756,22 @@ def parse_pdf_values(text):
     values["gross_turnover"] = values["cash"]
 
     return values
+
+
+def validate_pdf_month_end_content(text):
+    """Reject unrelated/scanned PDFs instead of importing a silent zero row."""
+    required_label_patterns = (
+        r"Funeral\s+Receipts",
+        r"Society\s+Receipts",
+        r"Insurance\s+Receipts",
+        r"MF\s+OBO\s+Receipts",
+        r"Total\s+MF\s+Files",
+    )
+    matched = sum(bool(re.search(pattern, text or "", re.I)) for pattern in required_label_patterns)
+    if matched < 3:
+        raise ValueError(
+            "This PDF does not contain enough recognizable Month-End Report fields. Please upload the original figures PDF."
+        )
 
 
 
@@ -1231,6 +1318,12 @@ def create_monthly_figure_from_pdf(file_storage, franchise_id=None, month=None, 
             if has_request_context():
                 session["selected_franchise_id"] = candidate.id
     text, tmp_path = extract_pdf_text(file_storage)
+    try:
+        validate_pdf_month_end_content(text)
+    except Exception:
+        if tmp_path.exists():
+            tmp_path.unlink()
+        raise
     if not franchise:
         franchise = detect_franchise_from_pdf_text(text)
     if not franchise:
@@ -1286,16 +1379,6 @@ def create_monthly_figure_from_pdf(file_storage, franchise_id=None, month=None, 
     # Manager and Finance Assistant users can see exactly what was imported.
     recalculate_monthly_figure(monthly_figure)
     db.session.commit()
-
-    try:
-        from app.monthly.import_pipeline import run_month_end_import_pipeline
-        run_month_end_import_pipeline(
-            period_tuples={(month, year)},
-            franchise_ids={franchise.id},
-            progress_job=progress_job,
-        )
-    except Exception as exc:
-        current_app.logger.exception("PDF import pipeline failed: %s", exc)
 
     upload_dir = Path(current_app.instance_path) / "monthly_imports"
     upload_dir.mkdir(parents=True, exist_ok=True)

@@ -9,7 +9,6 @@ from __future__ import annotations
 from dataclasses import dataclass, asdict
 from datetime import date
 from decimal import Decimal, InvalidOperation
-from difflib import SequenceMatcher
 from types import SimpleNamespace
 import re
 
@@ -217,7 +216,7 @@ def normalise_scale_rows(scales):
         amount_from = decimal_value(getattr(scale, "amount_from", 0))
         amount_to = decimal_value(getattr(scale, "amount_to", 0))
         percentage = decimal_value(getattr(scale, "percentage", 0))
-        if percentage <= 0:
+        if percentage <= 0 or percentage > 100:
             continue
         if amount_to <= 0:
             amount_to = OPEN_ENDED_AMOUNT_TO
@@ -248,6 +247,10 @@ def get_royalty_scales(franchise: Franchise | None):
     if parsed_raw:
         return parsed_raw, franchise, "imported_scale_text"
 
+    # Legacy databases can contain duplicate franchise records for the exact
+    # same normalized business name. An exact duplicate may supply the missing
+    # scale, but fuzzy/contained-name matching is unsafe for financial data: it
+    # can silently borrow another branch's percentage scale.
     wanted = normalize_franchise_name(getattr(franchise, "business_name", ""))
     if wanted:
         candidates = []
@@ -255,13 +258,10 @@ def get_royalty_scales(franchise: Franchise | None):
             if candidate.id == franchise.id:
                 continue
             key = normalize_franchise_name(candidate.business_name)
-            if not key:
-                continue
-            ratio = SequenceMatcher(None, wanted, key).ratio()
-            if key == wanted or wanted in key or key in wanted or ratio >= 0.84:
-                candidates.append((ratio, candidate))
+            if key == wanted:
+                candidates.append(candidate)
 
-        for _ratio, candidate in sorted(candidates, key=lambda item: item[0], reverse=True):
+        for candidate in sorted(candidates, key=lambda item: item.id):
             candidate_scales = RoyaltyScale.query.filter_by(franchise_id=candidate.id).order_by(
                 RoyaltyScale.row_number, RoyaltyScale.amount_from, RoyaltyScale.id
             ).all()
@@ -290,15 +290,25 @@ def calculate_royalty_amount(franchise: Franchise | None, royalty_base: Decimal)
     if not scales:
         errors.append("missing royalty scale")
     else:
+        matching_scales = []
         for scale in scales:
             amount_from = decimal_value(getattr(scale, "amount_from", 0))
             amount_to = decimal_value(getattr(scale, "amount_to", 0))
             if amount_to <= 0:
                 amount_to = OPEN_ENDED_AMOUNT_TO
             if royalty_base >= amount_from and royalty_base <= amount_to:
-                percentage = decimal_value(getattr(scale, "percentage", 0))
-                matched_scale = scale
-                break
+                matching_scales.append(scale)
+        if matching_scales:
+            # At a shared boundary (for example 100000 ending one bracket and
+            # starting the next), the bracket with the highest lower threshold
+            # is the applicable scale.
+            matched_scale = max(
+                matching_scales,
+                key=lambda scale: decimal_value(getattr(scale, "amount_from", 0)),
+            )
+            percentage = decimal_value(getattr(matched_scale, "percentage", 0))
+            if len(matching_scales) > 1:
+                warnings.append("overlapping royalty brackets; highest threshold used")
         if matched_scale is None:
             highest = max(scales, key=lambda s: decimal_value(getattr(s, "amount_to", 0)))
             if royalty_base >= decimal_value(getattr(highest, "amount_from", 0)):

@@ -215,6 +215,31 @@ def recalculate_royalties_for_period(month: int, year: int, franchise_ids: Optio
             if marker not in notes:
                 row.notes = (notes + "\n" + marker).strip()
             continue
+
+    grouped_result = {"groups": 0, "rows": 0}
+    try:
+        from app.grouped_royalties import apply_grouped_royalties_for_period
+        grouped_result = apply_grouped_royalties_for_period(
+            int(month), int(year), franchise_ids
+        )
+        if grouped_result.get("groups"):
+            # Group synchronization updates the snapshots created above. Count
+            # the final billing state, not the temporary branch-by-branch state.
+            snapshot_ids = [row.id for row in rows if row.id]
+            snapshots = RoyaltyCalculationSnapshot.query.filter(
+                RoyaltyCalculationSnapshot.monthly_figure_id.in_(snapshot_ids)
+            ).all() if snapshot_ids else []
+            calculated = sum(1 for snapshot in snapshots if snapshot.status == "calculated")
+            needs_review = sum(1 for snapshot in snapshots if snapshot.status == "needs_review") + errors
+    except Exception as exc:
+        errors += 1
+        needs_review += 1
+        error_details.append({
+            "monthly_figure_id": None,
+            "franchise_id": None,
+            "franchise_name": "Grouped royalties",
+            "error": str(exc),
+        })
     if commit:
         try:
             from app.events import emit_event
@@ -231,7 +256,7 @@ def recalculate_royalties_for_period(month: int, year: int, franchise_ids: Optio
         except Exception:
             pass
         db.session.commit()
-    return {"month": int(month), "year": int(year), "total": total, "calculated": calculated, "needs_review": needs_review, "errors": errors, "error_details": error_details}
+    return {"month": int(month), "year": int(year), "total": total, "calculated": calculated, "needs_review": needs_review, "errors": errors, "error_details": error_details, "grouped_royalties": grouped_result}
 
 
 def royalty_management_summary() -> dict:
