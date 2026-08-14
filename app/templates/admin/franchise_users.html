@@ -10,27 +10,47 @@
 
   <div class="form-section-card">
     <div class="table-responsive"><table class="system-report-table users-table user-management-table franchise-users-table">
-      <thead><tr><th>Name</th><th>Email</th><th>Status</th><th>Actions</th></tr></thead>
+      <thead><tr><th>Name</th><th>Email</th><th>Activated Modules</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
       {% for user in franchise_users %}
         <tr>
           <td><strong>{{ user.full_name }}</strong></td>
           <td>{{ user.email }}</td>
+          <td>
+            {% set module_state = namespace(labels=[]) %}
+            {% for code, label, description in optional_modules %}{% if user.has_permission(code) %}{% set module_state.labels = module_state.labels + [label] %}{% endif %}{% endfor %}
+            {% if module_state.labels %}{{ module_state.labels|join(', ') }}{% else %}<span class="muted">None</span>{% endif %}
+          </td>
           <td>{% if user.is_active %}<span class="badge success">Active</span>{% else %}<span class="badge warning">Inactive</span>{% endif %}</td>
           <td class="action-buttons">
             <button type="button" class="btn secondary button-auto" onclick="openUserModal('view-user-{{ user.id }}')">View</button>
             <button type="button" class="btn secondary button-auto" onclick="openUserModal('edit-user-{{ user.id }}')">Edit</button>
+            <button type="button" class="btn button-auto" onclick="openUserModal('modules-user-{{ user.id }}')">Modules</button>
             <form method="post" action="{{ url_for('admin.delete_user', user_id=user.id) }}" style="display:inline" onsubmit="return confirm('Delete/deactivate this franchise user?');"><button class="btn danger button-auto" type="submit">Delete</button></form>
           </td>
         </tr>
       {% else %}
-        <tr><td colspan="4" class="center-cell">No franchise users found.</td></tr>
+        <tr><td colspan="5" class="center-cell">No franchise users found.</td></tr>
       {% endfor %}
       </tbody>
     </table></div>
     <div class="user-management-modals">
       {% for user in franchise_users %}
         {% include 'admin/_user_action_modals.html' %}
+        <div class="modal-backdrop" id="modules-user-{{ user.id }}" aria-hidden="true">
+          <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modules-title-{{ user.id }}">
+            <div class="modal-header"><div><h2 id="modules-title-{{ user.id }}">Activated Modules</h2><p>{{ user.full_name }} · {{ user.email }}</p></div><button type="button" class="modal-close" onclick="closeUserModal('modules-user-{{ user.id }}')">x</button></div>
+            <p>Select the optional modules that this franchise user may see on desktop and mobile. Core Performance, Leaderboard, Monthly Figures, Royalty, Franchise Details and Employees remain available through the Franchise User role.</p>
+            <form method="post" action="{{ url_for('admin.update_franchise_user_modules', user_id=user.id) }}">
+              <div class="modal-role-grid">
+                {% for code, label, description in optional_modules %}
+                <label class="modal-role-option"><input type="checkbox" name="module_codes" value="{{ code }}" {% if user.has_permission(code) %}checked{% endif %}><span><strong>{{ label }}</strong><small>{{ description }}</small></span></label>
+                {% endfor %}
+              </div>
+              <div class="modal-actions"><button type="button" class="btn secondary button-auto" onclick="closeUserModal('modules-user-{{ user.id }}')">Cancel</button><button class="btn button-auto" type="submit">Save Modules</button></div>
+            </form>
+          </div>
+        </div>
       {% endfor %}
     </div>
   </div>

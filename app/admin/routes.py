@@ -9,7 +9,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from app.extensions import db
 from sqlalchemy import text
-from app.models import User, Role, Permission, AuditLog, Franchise, RoyaltyScale, MonthlyFigure, ImportJob, LiveEvent, LiveNotification, PerformancePageCache, ImportJobLog, WorkerHeartbeat, SystemEvent, EventSubscription, EventProcessingLog, RoyaltyGrowthProfile, RoyaltyAgreementProfile, RoyaltyCalculationSnapshot, RoyaltyOverride, FranchiseHealthSnapshot, BusinessInsight, InsightNarrative, WorkflowDefinition, WorkflowInstance, WorkflowStep, BusinessRule, EnterpriseTask, EnterpriseNotification, ScheduledJobDefinition, EnterpriseAuditTimeline, user_franchises
+from app.models import User, UserModuleAccess, Role, Permission, AuditLog, Franchise, RoyaltyScale, MonthlyFigure, ImportJob, LiveEvent, LiveNotification, PerformancePageCache, ImportJobLog, WorkerHeartbeat, SystemEvent, EventSubscription, EventProcessingLog, RoyaltyGrowthProfile, RoyaltyAgreementProfile, RoyaltyCalculationSnapshot, RoyaltyOverride, FranchiseHealthSnapshot, BusinessInsight, InsightNarrative, WorkflowDefinition, WorkflowInstance, WorkflowStep, BusinessRule, EnterpriseTask, EnterpriseNotification, ScheduledJobDefinition, EnterpriseAuditTimeline, user_franchises
 from app.franchise_context import set_selected_franchise
 from app.permissions import MODULES, ACTIONS, ROLE_TEMPLATES, ROLE_DEFAULTS, permission_code
 from app.audit import log_action
@@ -24,6 +24,12 @@ ADMIN_SIDE_ROLE_NAMES = {"Admin", "Finance Manager", "Finance Assistant", "Regio
 FRANCHISE_SIDE_ROLE_NAMES = {"Franchise User", "Franchise Manager", "Franchise Employee", "Franchise Agent", "Read Only User"}
 ADMIN_CREATABLE_ROLE_NAMES = ["Finance Manager", "Finance Assistant", "Regional Manager", "Franchise User"]
 FRANCHISE_CREATABLE_ROLE_NAMES = ["Franchise Manager", "Franchise Employee", "Franchise Agent"]
+
+FRANCHISE_OPTIONAL_MODULES = (
+    ("heat_map:view", "Heat Map", "Franchise coverage, density and map categories"),
+    ("attendance:view", "Attendance", "Staff attendance workspace"),
+    ("manuals:view", "Manuals", "Published manuals and search"),
+)
 
 ROLE_HELP_TEXT = {
     "Finance Manager": "Martins Funerals South Africa user. Sees the whole financial system and is not linked to one franchise.",
@@ -557,7 +563,32 @@ def franchise_users():
         roles=Role.query.filter(Role.name.in_(["Franchise User"])).order_by(Role.name).all(),
         franchises=franchises,
         can_assign_franchise_links=can_assign_franchise_links(),
+        optional_modules=FRANCHISE_OPTIONAL_MODULES,
     )
+
+
+@admin_bp.route("/franchise-users/<int:user_id>/modules", methods=["POST"])
+@login_required
+@permission_required("users:edit")
+def update_franchise_user_modules(user_id):
+    user = User.query.get_or_404(user_id)
+    if not user.is_franchise_scoped_user() or user.parent_franchise_user_id:
+        abort(400)
+
+    enabled_codes = set(request.form.getlist("module_codes"))
+    valid_codes = {code for code, _label, _description in FRANCHISE_OPTIONAL_MODULES}
+    for code in valid_codes:
+        access = UserModuleAccess.query.filter_by(user_id=user.id, module_code=code).first()
+        if access is None:
+            access = UserModuleAccess(user_id=user.id, module_code=code)
+            db.session.add(access)
+        access.is_enabled = code in enabled_codes
+
+    db.session.commit()
+    enabled_labels = [label for code, label, _description in FRANCHISE_OPTIONAL_MODULES if code in enabled_codes]
+    log_action("Users", "Updated franchise user modules", f"User: {user.email}; Modules: {', '.join(enabled_labels) or 'None'}")
+    flash(f"Activated modules updated for {user.full_name}.", "success")
+    return redirect(url_for("admin.franchise_users"))
 
 
 @admin_bp.route("/users/create", methods=["GET", "POST"])

@@ -26,6 +26,8 @@ user_franchises = db.Table(
     db.Column("is_primary", db.Boolean, default=False, nullable=False),
 )
 
+OPTIONAL_FRANCHISE_MODULES = {"heat_map:view", "attendance:view", "manuals:view"}
+
 ADMIN_ROLE_NAMES = {"Admin", "Super Admin"}
 FRANCHISE_SCOPED_ROLE_NAMES = {
     "Franchise User", "Franchise Manager", "Franchise Employee", "Franchise Agent",
@@ -73,6 +75,7 @@ class User(UserMixin, db.Model):
     updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
     roles = db.relationship("Role", secondary=user_roles, lazy="subquery", backref=db.backref("users", lazy=True))
     assigned_franchises = db.relationship("Franchise", secondary=user_franchises, lazy="subquery", backref=db.backref("assigned_users", lazy=True))
+    module_access = db.relationship("UserModuleAccess", back_populates="user", cascade="all, delete-orphan", lazy="select")
     franchise_employees = db.relationship(
         "User",
         foreign_keys="User.parent_franchise_user_id",
@@ -157,6 +160,10 @@ class User(UserMixin, db.Model):
         return any(role.name == role_name for role in self.roles)
 
     def has_permission(self, code):
+        if code in OPTIONAL_FRANCHISE_MODULES and self.is_franchise_scoped_user():
+            override = next((item for item in self.module_access if item.module_code == code), None)
+            if override is not None:
+                return bool(override.is_enabled)
         return any(role.has_permission(code) for role in self.roles)
 
     def get_reset_token(self):
@@ -175,6 +182,20 @@ class User(UserMixin, db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+class UserModuleAccess(db.Model):
+    """Explicit optional-module access for an individual franchise user."""
+    __tablename__ = "user_module_access"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    module_code = db.Column(db.String(80), nullable=False)
+    is_enabled = db.Column(db.Boolean, nullable=False, default=False)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+
+    user = db.relationship("User", back_populates="module_access")
+    __table_args__ = (db.UniqueConstraint("user_id", "module_code", name="uq_user_module_access_user_code"),)
+
 
 class Franchise(db.Model):
     __tablename__ = "franchises"
