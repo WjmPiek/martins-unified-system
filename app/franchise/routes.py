@@ -17,6 +17,8 @@ def permission_required(code):
     def decorator(func):
         @wraps(func)
         def wrapper(*args, **kwargs):
+            if current_user.has_role("Admin") or current_user.has_role("Super Admin"):
+                return func(*args, **kwargs)
             if not current_user.has_permission(code):
                 abort(403)
             return func(*args, **kwargs)
@@ -182,6 +184,100 @@ def parse_decimal(value, default="0"):
         return Decimal(str(value or default).replace(",", "").strip())
     except (InvalidOperation, ValueError):
         return Decimal(default)
+
+
+@franchise_bp.route("/details/new-franchise-user", methods=["GET", "POST"])
+@login_required
+def create_franchise_user():
+    """Create a brand-new franchise record and its primary owner login together."""
+    if not (current_user.has_role("Admin") or current_user.has_role("Super Admin")):
+        abort(403)
+
+    if request.method == "GET":
+        return render_template("franchise/create_franchise_user.html")
+
+    business_name = request.form.get("business_name", "").strip()
+    franchise_code = request.form.get("franchise_code", "").strip().upper()
+    user_name = request.form.get("user_name", "").strip()
+    user_surname = request.form.get("user_surname", "").strip()
+    user_email = request.form.get("user_email", "").strip().lower()
+    password = request.form.get("password", "").strip()
+
+    if not all((business_name, user_name, user_surname, user_email, password)):
+        flash("Franchise name and all Franchise User login fields are required.", "danger")
+        return render_template("franchise/create_franchise_user.html")
+
+    if Franchise.query.filter(db.func.lower(Franchise.business_name) == business_name.lower()).first():
+        flash("That franchise already exists. Open its Franchise Details record instead.", "danger")
+        return render_template("franchise/create_franchise_user.html")
+    if franchise_code and Franchise.query.filter(db.func.lower(Franchise.franchise_code) == franchise_code.lower()).first():
+        flash("That franchise code already belongs to another franchise.", "danger")
+        return render_template("franchise/create_franchise_user.html")
+    if User.query.filter(db.func.lower(User.email) == user_email).first():
+        flash("That email already belongs to an existing user. Enter a new login email.", "danger")
+        return render_template("franchise/create_franchise_user.html")
+
+    try:
+        agreement_start_date = parse_date(request.form.get("agreement_start_date"), "Agreement Start Date")
+        agreement_end_date = parse_date(request.form.get("agreement_end_date"), "Agreement End Date")
+    except ValueError as exc:
+        flash(str(exc), "danger")
+        return render_template("franchise/create_franchise_user.html")
+    if agreement_start_date and agreement_end_date and agreement_end_date < agreement_start_date:
+        flash("Agreement End Date cannot be earlier than Agreement Start Date.", "danger")
+        return render_template("franchise/create_franchise_user.html")
+
+    franchise = Franchise(
+        business_name=business_name,
+        franchise_code=franchise_code,
+        office_address=request.form.get("office_address", "").strip(),
+        office_number=format_sa_contact_number(request.form.get("office_number", "")),
+        after_hours_number=format_sa_contact_number(request.form.get("after_hours_number", "")),
+        franchisee_name=request.form.get("franchisee_name", "").strip(),
+        franchisee_surname=request.form.get("franchisee_surname", "").strip(),
+        franchisee_cell=format_sa_contact_number(request.form.get("franchisee_cell", "")),
+        franchisee_email=request.form.get("franchisee_email", "").strip().lower(),
+        public_email=request.form.get("public_email", "").strip().lower(),
+        agreement_start_date=agreement_start_date,
+        agreement_end_date=agreement_end_date,
+        royalty_gross_method="new" if agreement_start_date and agreement_start_date.year >= 2018 else "old",
+        is_performance_active=True,
+    )
+    role = Role.query.filter_by(name="Franchise User").first()
+    if not role:
+        role = Role(name="Franchise User", description="Franchise owner/user", is_system_role=True)
+        db.session.add(role)
+    user = User(
+        name=user_name,
+        surname=user_surname,
+        email=user_email,
+        is_active=True,
+        is_active_account=True,
+        parent_franchise_user_id=None,
+        created_by_user_id=current_user.id,
+    )
+    user.set_password(password)
+    user.roles.append(role)
+    db.session.add_all([franchise, user])
+    db.session.flush()
+    user.assigned_franchises = [franchise]
+    db.session.flush()
+    db.session.execute(
+        user_franchises.update()
+        .where(user_franchises.c.user_id == user.id)
+        .where(user_franchises.c.franchise_id == franchise.id)
+        .values(is_primary=True)
+    )
+    log_action(
+        "Franchise Details",
+        "Created franchise and primary Franchise User",
+        f"Franchise: {franchise.business_name}; User: {user.email}",
+    )
+    db.session.commit()
+    session["selected_franchise_id"] = franchise.id
+    session["franchise_view_mode"] = True
+    flash(f"{franchise.business_name} and Franchise User {user.full_name} were created and linked.", "success")
+    return redirect(url_for("franchise.details", franchise_id=franchise.id))
 
 
 @franchise_bp.route("/details", methods=["GET", "POST"])

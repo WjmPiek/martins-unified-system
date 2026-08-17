@@ -4,9 +4,14 @@
   <div class="section-header">
     <div>
       <h1>Create Martins User</h1>
-      <p>Create a Martins mother-company user, Regional Manager, or Franchise User account.</p>
+      <p>Create a Martins mother-company or Regional Manager account.</p>
     </div>
-    <a class="btn secondary button-auto" href="{{ url_for('admin.users') }}">Back to Users</a>
+    <div class="button-row">
+      {% if current_user.has_role('Admin') or current_user.has_role('Super Admin') %}
+      <a class="btn button-auto" href="{{ url_for('franchise.create_franchise_user') }}">Create New Franchise User</a>
+      {% endif %}
+      <a class="btn secondary button-auto" href="{{ url_for('admin.users') }}">Back to Users</a>
+    </div>
   </div>
 
   <div class="form-section-card">
@@ -19,13 +24,15 @@
         <select name="role_id" id="admin-create-role" required onchange="toggleFranchiseScope()">
           <option value="">Select role</option>
           {% for role in admin_creatable_roles %}
+            {% if role.name != 'Franchise User' %}
             <option value="{{ role.id }}" data-role-name="{{ role.name }}">{{ role.name }}</option>
+            {% endif %}
           {% endfor %}
         </select>
       </label>
       <div id="franchise-scope-box" style="display:none; grid-column: 1 / -1;">
         <label>Linked Franchise(s)</label>
-        <p class="muted">Regional Managers can have multiple franchises. A Franchise User must have exactly one primary franchise.</p>
+        <p class="muted">Regional Managers can be linked to multiple franchises.</p>
         <div class="modal-role-grid franchise-scope-options" id="existing-franchise-options">
           {% for franchise in franchises %}
             <label class="modal-role-option">
@@ -33,23 +40,8 @@
               <span>{{ franchise.business_name or 'Unnamed Franchise' }}</span>
             </label>
           {% else %}
-            <div class="empty-franchise-message">No franchises exist yet. Create the first franchise below.</div>
+            <div class="empty-franchise-message">No franchises exist yet. Use “Create New Franchise User” above to create the franchise and its owner login together.</div>
           {% endfor %}
-        </div>
-        <div id="new-franchise-choice" class="new-franchise-choice" {% if not franchises %}hidden{% endif %}>
-          <label class="create-new-franchise-toggle">
-            <input id="create_new_franchise" type="checkbox" name="create_new_franchise" value="1" onchange="toggleNewFranchiseFields()">
-            <span>Create a new franchise instead</span>
-          </label>
-        </div>
-        {% if not franchises %}<input type="hidden" name="create_new_franchise" value="1">{% endif %}
-        <div id="new-franchise-fields" class="new-franchise-fields" {% if franchises %}hidden{% endif %}>
-          <h3>Create First Franchise</h3>
-          <p class="muted">The franchise record will be created and linked as this user’s primary franchise.</p>
-          <div class="new-franchise-grid">
-            <label>Franchise / Business Name<input name="new_franchise_name" id="new_franchise_name" placeholder="Example: Panorama"></label>
-            <label>Franchise Code <span class="muted">(optional)</span><input name="new_franchise_code" placeholder="Example: PAN001"></label>
-          </div>
         </div>
       </div>
       <div style="grid-column: 1 / -1;"><button class="btn button-auto" type="submit">Create User</button></div>
@@ -62,22 +54,7 @@ function toggleFranchiseScope(){
   const option = select.options[select.selectedIndex];
   const roleName = option ? option.getAttribute('data-role-name') : '';
   const box = document.getElementById('franchise-scope-box');
-  box.style.display = (roleName === 'Regional Manager' || roleName === 'Franchise User') ? 'block' : 'none';
-  const choice = document.getElementById('new-franchise-choice');
-  if (choice) choice.hidden = roleName !== 'Franchise User';
-  toggleNewFranchiseFields();
-}
-function toggleNewFranchiseFields(){
-  const role = document.getElementById('admin-create-role');
-  const roleName = role && role.options[role.selectedIndex] ? role.options[role.selectedIndex].getAttribute('data-role-name') : '';
-  const toggle = document.getElementById('create_new_franchise');
-  const fields = document.getElementById('new-franchise-fields');
-  const existing = document.getElementById('existing-franchise-options');
-  const createNew = roleName === 'Franchise User' && ((!toggle && fields) || (toggle && toggle.checked));
-  if (fields) fields.hidden = !createNew;
-  if (existing) existing.querySelectorAll('input[name="franchise_ids"]').forEach(function(input){ input.disabled = createNew; if(createNew) input.checked = false; });
-  const name = document.getElementById('new_franchise_name');
-  if (name) name.required = Boolean(createNew);
+  box.style.display = roleName === 'Regional Manager' ? 'block' : 'none';
 }
 document.addEventListener('DOMContentLoaded', toggleFranchiseScope);
 </script>

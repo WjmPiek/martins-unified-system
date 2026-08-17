@@ -6,6 +6,9 @@
       <h1>Franchise Users</h1>
       <p>All registered franchise user accounts are listed here, including franchises without recent performance data.</p>
     </div>
+    {% if current_user.has_role('Admin') or current_user.has_role('Super Admin') %}
+      <a class="btn button-auto" href="{{ url_for('franchise.create_franchise_user') }}">New Franchise User</a>
+    {% endif %}
   </div>
 
   <div class="form-section-card">

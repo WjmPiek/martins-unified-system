@@ -11,6 +11,9 @@
   {% if can_create_admin_user %}
   <div class="button-row" style="margin-bottom:1rem;">
     <a class="btn button-auto" href="{{ url_for('admin.create_admin_user') }}">New User</a>
+    {% if current_user.has_role('Admin') or current_user.has_role('Super Admin') %}
+    <a class="btn secondary button-auto" href="{{ url_for('franchise.create_franchise_user') }}">New Franchise User</a>
+    {% endif %}
   </div>
   {% endif %}
 

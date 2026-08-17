@@ -653,38 +653,9 @@ def create_admin_user():
         flash("You are not allowed to create that user role.", "danger")
         return redirect(url_for("admin.users"))
 
-    created_franchise = None
-    create_new_franchise = request.form.get("create_new_franchise") == "1"
-    new_franchise_name = request.form.get("new_franchise_name", "").strip()
-    new_franchise_code = request.form.get("new_franchise_code", "").strip().upper()
-    if role.name == "Franchise User" and create_new_franchise:
-        if franchise_ids:
-            flash("Choose an existing franchise or create a new franchise, not both.", "danger")
-            return redirect(url_for("admin.create_admin_user"))
-        if not new_franchise_name:
-            flash("Enter the franchise/business name before creating the Franchise User.", "danger")
-            return redirect(url_for("admin.create_admin_user"))
-        duplicate_franchise = Franchise.query.filter(
-            db.func.lower(Franchise.business_name) == new_franchise_name.lower()
-        ).first()
-        if duplicate_franchise:
-            flash("That franchise already exists. Select it from the franchise list instead.", "danger")
-            return redirect(url_for("admin.create_admin_user"))
-        if new_franchise_code:
-            duplicate_code = Franchise.query.filter(
-                db.func.lower(Franchise.franchise_code) == new_franchise_code.lower()
-            ).first()
-            if duplicate_code:
-                flash("That franchise code already belongs to another franchise.", "danger")
-                return redirect(url_for("admin.create_admin_user"))
-        created_franchise = Franchise(
-            business_name=new_franchise_name,
-            franchise_code=new_franchise_code,
-            is_performance_active=True,
-        )
-        db.session.add(created_franchise)
-        db.session.flush()
-        franchise_ids = [created_franchise.id]
+    if role.name == "Franchise User":
+        flash("Create a new Franchise User from Franchise Details so the franchise and login are linked correctly.", "info")
+        return redirect(url_for("franchise.create_franchise_user"))
 
     user = User(
         name=name,
@@ -705,11 +676,7 @@ def create_admin_user():
         return redirect(url_for("admin.users"))
 
     db.session.commit()
-    log_action(
-        "Users",
-        "Created admin-managed user",
-        f"User: {email}; Role: {role.name}; Franchise created: {created_franchise.business_name if created_franchise else 'No'}",
-    )
+    log_action("Users", "Created admin-managed user", f"User: {email}; Role: {role.name}")
     flash(f"User {user.full_name} was created as {role.name}.", "success")
     if role.name == "Franchise User":
         return redirect(url_for("admin.franchise_users"))

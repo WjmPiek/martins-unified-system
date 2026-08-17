@@ -5,6 +5,9 @@
         <h1>Franchise Details</h1>
         <p class="muted">Maintain the franchise profile used across dashboards, reports, PDF cover pages, and notifications. After saving, the dashboard will show the saved franchise and the form will be cleared from the screen.</p>
     </div>
+    {% if current_user.has_role('Admin') or current_user.has_role('Super Admin') %}
+        <a class="btn button-auto" href="{{ url_for('franchise.create_franchise_user') }}">Create New Franchise User</a>
+    {% endif %}
     {% if not can_view_agreement and not can_view_scale %}
         <span class="badge warning">Agreement and Royalty Scale hidden by role permissions</span>
     {% elif readonly_finance_fields %}

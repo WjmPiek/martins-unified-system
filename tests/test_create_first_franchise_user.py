@@ -1,3 +1,5 @@
+from flask import g
+
 from app import create_app
 from app.extensions import db
 from app.models import Franchise, Role, User, user_franchises
@@ -10,7 +12,7 @@ class TestConfig:
     TESTING = True
 
 
-def test_admin_can_create_first_franchise_and_user_together():
+def test_admin_creates_brand_new_franchise_user_from_franchise_details():
     app = create_app(TestConfig)
     with app.app_context():
         db.create_all()
@@ -31,23 +33,21 @@ def test_admin_can_create_first_franchise_and_user_together():
             session["_user_id"] = str(admin.id)
             session["_fresh"] = True
 
-        form_page = client.get("/admin/users/create")
+        form_page = client.get("/franchise/details/new-franchise-user")
         assert form_page.status_code == 200
         html = form_page.get_data(as_text=True)
-        assert "Create First Franchise" in html
-        assert "franchise-scope-options" in html
+        assert "Franchise Details — Create New Franchise User" in html
+        assert "Create Franchise and User" in html
 
         response = client.post(
-            "/admin/users/create",
+            "/franchise/details/new-franchise-user",
             data={
-                "name": "Yolandi",
-                "surname": "Heyns",
-                "email": "yolandi@example.com",
+                "user_name": "Yolandi",
+                "user_surname": "Heyns",
+                "user_email": "yolandi@example.com",
                 "password": "temporary-password",
-                "role_id": str(franchise_role.id),
-                "create_new_franchise": "1",
-                "new_franchise_name": "Panorama",
-                "new_franchise_code": "PAN001",
+                "business_name": "Panorama",
+                "franchise_code": "PAN001",
             },
         )
         assert response.status_code == 302
@@ -62,3 +62,14 @@ def test_admin_can_create_first_franchise_and_user_together():
             .where(user_franchises.c.franchise_id == franchise.id)
         ).one()
         assert link.is_primary is True
+
+        g.pop("accessible_franchises_cache", None)
+        details = client.get(f"/franchise/details?franchise_id={franchise.id}")
+        details_html = details.get_data(as_text=True)
+        assert details.status_code == 200
+        assert "yolandi@example.com" in details_html
+
+        g.pop("accessible_franchises_cache", None)
+        users_page = client.get("/admin/franchise-users")
+        assert users_page.status_code == 200
+        assert "yolandi@example.com" in users_page.get_data(as_text=True)

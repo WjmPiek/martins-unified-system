@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block app_content %}
+<section class="page-section create-franchise-user-page">
+  <div class="section-header">
+    <div>
+      <h1>Franchise Details — Create New Franchise User</h1>
+      <p class="muted">Create a brand-new franchise that is not already on the system and link its new owner login.</p>
+    </div>
+    <div class="button-row">
+      <a class="btn secondary button-auto" href="{{ url_for('franchise.details') }}">Back to Franchise Details</a>
+      <a class="btn secondary button-auto" href="{{ url_for('admin.franchise_users') }}">All Franchise Users</a>
+    </div>
+  </div>
+
+  <form method="post" class="professional-form">
+    <div class="form-section-card">
+      <h2>New Franchise Details</h2>
+      <p class="muted">This creates a new franchise record. It does not select or reuse a user already on the system.</p>
+      <div class="form-grid">
+        <label for="business_name">Business / Franchise Name</label>
+        <input id="business_name" name="business_name" value="{{ request.form.get('business_name', '') }}" required>
+        <label for="franchise_code">Franchise Code</label>
+        <input id="franchise_code" name="franchise_code" value="{{ request.form.get('franchise_code', '') }}" placeholder="Example: PAN001">
+        <label for="office_address">Office Address</label>
+        <textarea id="office_address" name="office_address">{{ request.form.get('office_address', '') }}</textarea>
+        <label for="office_number">Office Number</label>
+        <input id="office_number" name="office_number" value="{{ request.form.get('office_number', '') }}">
+        <label for="after_hours_number">24-Hour Number</label>
+        <input id="after_hours_number" name="after_hours_number" value="{{ request.form.get('after_hours_number', '') }}">
+        <label for="public_email">Public Email</label>
+        <input id="public_email" type="email" name="public_email" value="{{ request.form.get('public_email', '') }}">
+        <label for="agreement_start_date">Agreement Start Date</label>
+        <input id="agreement_start_date" type="date" name="agreement_start_date" value="{{ request.form.get('agreement_start_date', '') }}" min="1900-01-01" max="2100-12-31">
+        <label for="agreement_end_date">Agreement End Date</label>
+        <input id="agreement_end_date" type="date" name="agreement_end_date" value="{{ request.form.get('agreement_end_date', '') }}" min="1900-01-01" max="2100-12-31">
+      </div>
+    </div>
+
+    <div class="form-section-card">
+      <h2>Franchisee Contact</h2>
+      <div class="form-grid">
+        <label for="franchisee_name">Franchisee Name</label>
+        <input id="franchisee_name" name="franchisee_name" value="{{ request.form.get('franchisee_name', '') }}">
+        <label for="franchisee_surname">Franchisee Surname</label>
+        <input id="franchisee_surname" name="franchisee_surname" value="{{ request.form.get('franchisee_surname', '') }}">
+        <label for="franchisee_cell">Franchisee Cell</label>
+        <input id="franchisee_cell" name="franchisee_cell" value="{{ request.form.get('franchisee_cell', '') }}">
+        <label for="franchisee_email">Franchisee Email</label>
+        <input id="franchisee_email" type="email" name="franchisee_email" value="{{ request.form.get('franchisee_email', '') }}">
+      </div>
+    </div>
+
+    <div class="form-section-card">
+      <h2>New Franchise User Login</h2>
+      <p class="muted">This login will be listed under Administration → Franchise Users and linked as the primary owner of the new franchise.</p>
+      <div class="form-grid">
+        <label for="user_name">User Name</label>
+        <input id="user_name" name="user_name" value="{{ request.form.get('user_name', '') }}" required>
+        <label for="user_surname">User Surname</label>
+        <input id="user_surname" name="user_surname" value="{{ request.form.get('user_surname', '') }}" required>
+        <label for="user_email">Login Email</label>
+        <input id="user_email" type="email" name="user_email" value="{{ request.form.get('user_email', '') }}" required>
+        <label for="password">Temporary Password</label>
+        <input id="password" type="password" name="password" required>
+      </div>
+    </div>
+
+    <div class="form-actions sticky-actions">
+      <button class="button-auto" type="submit">Create Franchise and User</button>
+    </div>
+  </form>
+</section>
+{% endblock %}
