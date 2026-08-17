@@ -584,7 +584,7 @@ class HeatmapRecord(db.Model):
         relation = (self.relation or "").strip().lower()
         if relation.startswith("map:"):
             value = relation.split(":", 1)[1].strip().replace("-", "_").replace(" ", "_")
-            if value in {"deceased", "church", "cemetery", "crematorium", "insurance_clients"}:
+            if value in {"deceased", "next_of_kin", "church", "cemetery", "crematorium", "insurance_clients"}:
                 return value
         return "deceased"
 

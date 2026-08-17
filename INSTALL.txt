@@ -1,23 +1,21 @@
-HEAT MAP TEMPLATE DOWNLOAD AND FRANCHISE IMPORT
+HEAT MAP IMPORT MERGE / NO-DUPLICATE UPDATE
 
-Copy the app folder from this ZIP into the root of your existing project:
+1. Back up the working project.
+2. Extract this ZIP into the project root.
+3. Allow the included app files to replace the matching files.
+4. Commit and push the changes to deploy on Render.
 
-C:\Users\WjmLabtop\OneDrive\SERVER\martins-unified-system\martins-funeral-system
+No database migration is required.
 
-Allow Windows to merge the app folder and replace/add these three files only:
+Import behaviour after this update:
+- Existing Heat Map records that are not in the uploaded file remain untouched.
+- Records are compared inside the selected franchise and category.
+- MF File is used as the primary service identifier when available.
+- A matching record is updated in place when supplied details have changed.
+- A matching unchanged record is skipped.
+- A genuinely new record is added.
+- Repeated rows inside the same uploaded workbook are not added twice.
+- Blank incoming values do not erase useful existing values.
+- The import result reports Added, Updated and Unchanged/Duplicates totals.
 
-app\heatmap\routes.py
-app\templates\heatmap\index.html
-app\static\templates\heatmap_import_template.xlsx
-
-No database migration is included or required.
-
-Then run from PowerShell in your project root:
-
-git add app/heatmap/routes.py app/templates/heatmap/index.html app/static/templates/heatmap_import_template.xlsx
-git commit -m "Add Heat Map import template download"
-git push
-
-After Render deploys, open Heat Map. Admin and activated franchise users will
-see Download Heat Map Template. Franchise users can import the completed file
-only into their own franchise.
+This package also contains the current 57-column Heat Map template and category/service-grouping files so it can be installed as one complete update.

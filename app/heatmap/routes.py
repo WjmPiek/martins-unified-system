@@ -20,14 +20,19 @@ PROVINCES = [
 ]
 
 HEATMAP_RECORD_TYPES = {
-    "deceased": "Deceased", "church": "Church", "cemetery": "Cemetery",
+    "deceased": "Deceased", "next_of_kin": "Next of Kin", "church": "Church", "cemetery": "Cemetery",
     "crematorium": "Crematorium", "insurance_clients": "Insurance Clients",
 }
 
 
 def normalize_record_type(value):
     key = clean(value).lower().replace("-", "_").replace(" ", "_")
-    aliases = {"insurance": "insurance_clients", "insurance_client": "insurance_clients", "client": "insurance_clients", "clients": "insurance_clients"}
+    aliases = {
+        "nok": "next_of_kin", "next_of_kin_client": "next_of_kin",
+        "churches": "church", "cemeteries": "cemetery", "crematoria": "crematorium",
+        "insurance": "insurance_clients", "insurance_client": "insurance_clients",
+        "client": "insurance_clients", "clients": "insurance_clients",
+    }
     key = aliases.get(key, key)
     return key if key in HEATMAP_RECORD_TYPES else "deceased"
 
@@ -120,16 +125,192 @@ def cell(ws, row, headers, *names):
     return ""
 
 
-def build_full_address(address, city, province, country):
-    return ", ".join(part for part in [clean(address), clean(city), clean(province), clean(country) or "South Africa"] if part)
+def build_full_address(address, city, province, country, postal_code=""):
+    location_parts = [clean(address), clean(city), clean(province), clean(postal_code)]
+    cleaned_country = clean(country)
+    if not any(location_parts) and not cleaned_country:
+        return ""
+    return ", ".join(part for part in [*location_parts, cleaned_country or "South Africa"] if part)
+
+
+def header_positions(row):
+    """Return every matching column so repeated Latitude/Longitude/Weight headers remain usable."""
+    result = {}
+    for index, value in enumerate(row, start=1):
+        key = clean(value).lower().replace("_", " ").replace("-", " ")
+        if key:
+            result.setdefault(key, []).append(index)
+    return result
+
+
+def positioned_cell(ws, row, positions, name, occurrence=0):
+    indexes = positions.get(name, [])
+    if occurrence >= len(indexes):
+        return ""
+    return ws.cell(row, indexes[occurrence]).value
+
+
+def parse_wide_density_template(ws, positions, source_filename, franchise_id):
+    """Split one service row into deceased, venue and next-of-kin map records."""
+    records = []
+    skipped_blank = 0
+
+    def value(row, name, occurrence=0):
+        return clean(positioned_cell(ws, row, positions, name, occurrence))
+
+    def numeric_value(row, name, occurrence=0):
+        return number(positioned_cell(ws, row, positions, name, occurrence))
+
+    def section_present(row, names, coordinate_occurrence):
+        return (
+            any(value(row, name) for name in names)
+            or numeric_value(row, "latitude", coordinate_occurrence) is not None
+            or numeric_value(row, "longitude", coordinate_occurrence) is not None
+        )
+
+    def add_record(*, row, record_type, name="", surname="", dod="", address="", city="",
+                   province="", postal_code="", country="", full_address="", latitude=None,
+                   longitude=None, weight=None, next_of_kin_name="", next_of_kin_surname="",
+                   relationship="", contact_number="", mf_file="", enabled=True):
+        if not enabled:
+            return False
+        meaningful = [
+            mf_file, name, surname, dod, address, city, province, postal_code,
+            full_address, next_of_kin_name, next_of_kin_surname, contact_number,
+        ]
+        if not any(clean(item) for item in meaningful) and latitude is None and longitude is None:
+            return False
+        resolved_full_address = full_address or build_full_address(address, city, province, country, postal_code)
+        records.append(HeatmapRecord(
+            franchise_id=franchise_id,
+            mf_file=mf_file,
+            deceased_name=name,
+            deceased_surname=surname,
+            dod=dod,
+            address=address,
+            city=city,
+            province=province,
+            country=country or "South Africa",
+            full_address=resolved_full_address,
+            latitude=latitude,
+            longitude=longitude,
+            weight=weight or 1,
+            next_of_kin_name=next_of_kin_name,
+            next_of_kin_surname=next_of_kin_surname,
+            relationship=relationship,
+            relation=f"MAP:{record_type}",
+            contact_number=contact_number,
+            source_filename=source_filename,
+            created_by_id=current_user.id,
+        ))
+        return True
+
+    for row in range(2, ws.max_row + 1):
+        before = len(records)
+        mf_file = value(row, "mf file")
+        deceased_name = value(row, "deceased name")
+        deceased_surname = value(row, "deceased surname")
+        dod = value(row, "dod")
+        nok_name = value(row, "next of kin name")
+        nok_surname = value(row, "next of kin surname")
+        relationship = value(row, "relationship")
+        contact_number = value(row, "contact number")
+
+        add_record(
+            row=row, record_type="deceased", mf_file=mf_file, name=deceased_name,
+            surname=deceased_surname, dod=dod, address=value(row, "address"),
+            city=value(row, "city"), province=value(row, "province"),
+            postal_code=value(row, "postal code"), country=value(row, "country"),
+            full_address=value(row, "full address"), latitude=numeric_value(row, "latitude", 0),
+            longitude=numeric_value(row, "longitude", 0), weight=numeric_value(row, "weight", 0),
+            next_of_kin_name=nok_name, next_of_kin_surname=nok_surname,
+            relationship=relationship, contact_number=contact_number,
+            enabled=section_present(row, [
+                "deceased name", "deceased surname", "dod", "address", "city",
+                "province", "postal code", "full address",
+            ], 0),
+        )
+
+        church_name = value(row, "church name")
+        pastor_name = value(row, "pastor name")
+        add_record(
+            row=row, record_type="church", mf_file=mf_file, name=church_name, dod=dod,
+            address=value(row, "church street address"), city=value(row, "church city"),
+            province=value(row, "church province"), postal_code=value(row, "church postal code"),
+            country=value(row, "church country"), full_address=value(row, "church full address"),
+            latitude=numeric_value(row, "latitude", 1), longitude=numeric_value(row, "longitude", 1),
+            weight=numeric_value(row, "weight", 1), next_of_kin_name=deceased_name,
+            next_of_kin_surname=deceased_surname,
+            relationship=f"Pastor: {pastor_name}" if pastor_name else "",
+            enabled=section_present(row, [
+                "church name", "church street address", "church city", "church province",
+                "church postal code", "church full address", "pastor name",
+            ], 1),
+        )
+
+        add_record(
+            row=row, record_type="cemetery", mf_file=mf_file, name=value(row, "cemetery name"), dod=dod,
+            address=value(row, "cemetery street address"), city=value(row, "cemetery city"),
+            province=value(row, "cemetery province"), postal_code=value(row, "cemetery postal code"),
+            country=value(row, "cemetery country"), full_address=value(row, "cemetery full address"),
+            latitude=numeric_value(row, "latitude", 2), longitude=numeric_value(row, "longitude", 2),
+            weight=numeric_value(row, "weight", 2), next_of_kin_name=deceased_name,
+            next_of_kin_surname=deceased_surname,
+            enabled=section_present(row, [
+                "cemetery name", "cemetery street address", "cemetery city", "cemetery province",
+                "cemetery postal code", "cemetery full address",
+            ], 2),
+        )
+
+        add_record(
+            row=row, record_type="crematorium", mf_file=mf_file, name=value(row, "crematorium name"), dod=dod,
+            address=value(row, "crematorium street address"), city=value(row, "crematorium city"),
+            province=value(row, "crematorium province"), postal_code=value(row, "crematorium postal code"),
+            country=value(row, "crematorium country"), full_address=value(row, "crematorium full address"),
+            latitude=numeric_value(row, "latitude", 3), longitude=numeric_value(row, "longitude", 3),
+            weight=numeric_value(row, "weight", 3), next_of_kin_name=deceased_name,
+            next_of_kin_surname=deceased_surname,
+            enabled=section_present(row, [
+                "crematorium name", "crematorium street address", "crematorium city",
+                "crematorium province", "crematorium postal code",
+                "crematorium full address",
+            ], 3),
+        )
+
+        add_record(
+            row=row, record_type="next_of_kin", mf_file=mf_file, name=deceased_name,
+            surname=deceased_surname, dod=dod, address=value(row, "next of kin street address"),
+            city=value(row, "next of kin city"), province=value(row, "next of kin province"),
+            postal_code=value(row, "next of kin postal code"), country=value(row, "next of kin country"),
+            full_address=value(row, "next of kin full address"), latitude=numeric_value(row, "latitude", 4),
+            longitude=numeric_value(row, "longitude", 4), weight=numeric_value(row, "weight", 4),
+            next_of_kin_name=nok_name, next_of_kin_surname=nok_surname,
+            relationship=relationship, contact_number=contact_number,
+            enabled=section_present(row, [
+                "next of kin name", "next of kin surname", "relationship", "contact number",
+                "next of kin street address", "next of kin city", "next of kin province",
+                "next of kin postal code", "next of kin full address",
+            ], 4),
+        )
+
+        if len(records) == before:
+            skipped_blank += 1
+
+    return records, 0, skipped_blank
 
 
 def parse_heatmap_excel(file_storage, source_filename, franchise_id):
     wb = load_workbook(file_storage, data_only=True)
     ws = wb.active
-    headers = header_map([cell.value for cell in ws[1]])
+    header_values = [cell.value for cell in ws[1]]
+    headers = header_map(header_values)
     if not headers:
         raise ValueError("The uploaded Excel file does not contain a header row.")
+
+    positions = header_positions(header_values)
+    wide_markers = {"church name", "cemetery name", "crematorium name", "next of kin street address"}
+    if wide_markers.issubset(positions):
+        return parse_wide_density_template(ws, positions, source_filename, franchise_id)
 
     has_relation_column = "relation" in headers
     records = []
@@ -138,13 +319,20 @@ def parse_heatmap_excel(file_storage, source_filename, franchise_id):
 
     for row in range(2, ws.max_row + 1):
         mf_file = clean(cell(ws, row, headers, "mf file", "mf_file", "file", "policy number"))
-        deceased_name = clean(cell(ws, row, headers, "deceased name", "name"))
+        record_name = clean(cell(
+            ws, row, headers, "record name", "location name", "church name",
+            "cemetery name", "crematorium name",
+        ))
+        deceased_name = clean(cell(ws, row, headers, "deceased name", "name")) or record_name
         deceased_surname = clean(cell(ws, row, headers, "deceased surname", "surname"))
         address = clean(cell(ws, row, headers, "address", "street address", "residential address"))
         city = clean(cell(ws, row, headers, "city", "town", "town city"))
         province = clean(cell(ws, row, headers, "province"))
-        country = clean(cell(ws, row, headers, "country")) or "South Africa"
-        full_address = clean(cell(ws, row, headers, "full address", "fulladdress")) or build_full_address(address, city, province, country)
+        country_value = clean(cell(ws, row, headers, "country"))
+        country = country_value or "South Africa"
+        full_address = clean(cell(ws, row, headers, "full address", "fulladdress")) or build_full_address(address, city, province, country_value)
+        next_of_kin_name = clean(cell(ws, row, headers, "next of kin name", "nok name"))
+        next_of_kin_surname = clean(cell(ws, row, headers, "next of kin surname", "nok surname"))
         relation = clean(cell(ws, row, headers, "relation"))
         explicit_record_type = clean(cell(ws, row, headers, "record type", "record_type", "map category", "category", "client type", "location type"))
         record_type = normalize_record_type(explicit_record_type)
@@ -152,7 +340,10 @@ def parse_heatmap_excel(file_storage, source_filename, franchise_id):
         if has_relation_column and relation.upper() != "MEM":
             skipped_non_mem += 1
             continue
-        if not any([mf_file, deceased_name, deceased_surname, address, city, province, full_address]):
+        if not any([
+            mf_file, deceased_name, deceased_surname, next_of_kin_name,
+            next_of_kin_surname, address, city, province, full_address,
+        ]):
             skipped_blank += 1
             continue
 
@@ -170,8 +361,8 @@ def parse_heatmap_excel(file_storage, source_filename, franchise_id):
             latitude=number(cell(ws, row, headers, "latitude", "lat")),
             longitude=number(cell(ws, row, headers, "longitude", "lng", "lon")),
             weight=number(cell(ws, row, headers, "weight")) or 1,
-            next_of_kin_name=clean(cell(ws, row, headers, "next of kin name", "nok name")),
-            next_of_kin_surname=clean(cell(ws, row, headers, "next of kin surname", "nok surname")),
+            next_of_kin_name=next_of_kin_name,
+            next_of_kin_surname=next_of_kin_surname,
             relationship=clean(cell(ws, row, headers, "relationship")),
             relation=f"MAP:{record_type}" if explicit_record_type else relation,
             contact_number=clean(cell(ws, row, headers, "contact number", "cell number", "phone")),
@@ -179,6 +370,80 @@ def parse_heatmap_excel(file_storage, source_filename, franchise_id):
             created_by_id=current_user.id,
         ))
     return records, skipped_non_mem, skipped_blank
+
+
+def heatmap_record_identity(record):
+    """Build a stable per-franchise/category key for import reconciliation."""
+    franchise_id = record.franchise_id
+    record_type = record.map_record_type
+    mf_file = clean(record.mf_file).casefold()
+    if mf_file:
+        return ("mf_file", franchise_id, record_type, mf_file)
+    named_identity = (
+        clean(record.deceased_name).casefold(),
+        clean(record.deceased_surname).casefold(),
+        clean(record.next_of_kin_name).casefold(),
+        clean(record.next_of_kin_surname).casefold(),
+        clean(record.dod).casefold(),
+    )
+    if any(named_identity):
+        return ("details", franchise_id, record_type, *named_identity)
+    return (
+        "location", franchise_id, record_type,
+        clean(record.full_address or record.address).casefold(),
+        clean(record.city).casefold(),
+        clean(record.province).casefold(),
+        clean(record.contact_number).casefold(),
+    )
+
+
+IMPORT_MERGE_FIELDS = (
+    "mf_file", "deceased_name", "deceased_surname", "dod", "address", "city",
+    "province", "country", "full_address", "latitude", "longitude", "weight",
+    "next_of_kin_name", "next_of_kin_surname", "relationship", "relation",
+    "contact_number",
+)
+
+
+def merge_heatmap_record(existing, incoming):
+    """Apply supplied values without erasing useful existing values with blanks."""
+    changed = False
+    for field in IMPORT_MERGE_FIELDS:
+        incoming_value = getattr(incoming, field)
+        if incoming_value is None or (isinstance(incoming_value, str) and not clean(incoming_value)):
+            continue
+        if getattr(existing, field) != incoming_value:
+            setattr(existing, field, incoming_value)
+            changed = True
+    if changed:
+        existing.source_filename = incoming.source_filename
+    return changed
+
+
+def reconcile_heatmap_records(records, franchise_id):
+    """Add new records, update matches and leave all unrelated existing data intact."""
+    existing_records = HeatmapRecord.query.filter_by(franchise_id=franchise_id).all()
+    by_identity = {}
+    for existing in existing_records:
+        by_identity.setdefault(heatmap_record_identity(existing), existing)
+
+    additions = []
+    updated = 0
+    unchanged = 0
+    for incoming in records:
+        identity = heatmap_record_identity(incoming)
+        existing = by_identity.get(identity)
+        if existing is None:
+            additions.append(incoming)
+            by_identity[identity] = incoming
+        elif merge_heatmap_record(existing, incoming):
+            updated += 1
+        else:
+            unchanged += 1
+
+    if additions:
+        db.session.add_all(additions)
+    return len(additions), updated, unchanged
 
 
 @heatmap_bp.route("/")
@@ -254,9 +519,13 @@ def import_excel():
         if not records:
             flash("No valid heat map rows were found in the uploaded file.", "warning")
             return redirect(url_for("heatmap.index"))
-        db.session.add_all(records)
+        added, updated, unchanged = reconcile_heatmap_records(records, franchise_id)
         db.session.commit()
-        detail = f"Imported {len(records)} heat map records from {filename}. Skipped non-MEM rows: {skipped_non_mem}; blank rows: {skipped_blank}."
+        detail = (
+            f"Compared {len(records)} heat map records from {filename}. "
+            f"Added: {added}; updated: {updated}; unchanged/duplicates: {unchanged}. "
+            f"Skipped non-MEM rows: {skipped_non_mem}; blank rows: {skipped_blank}."
+        )
         log_action("Heat Map", "Imported heat map records", detail)
         flash(detail, "success")
     except Exception as exc:

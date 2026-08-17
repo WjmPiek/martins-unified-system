@@ -15,11 +15,7 @@
   <label for="heatRecordTypeFilter">Map category</label>
   <select id="heatRecordTypeFilter">
     <option value="">All categories</option>
-    <option value="deceased">Deceased</option>
-    <option value="church">Church</option>
-    <option value="cemetery">Cemetery</option>
-    <option value="crematorium">Crematorium</option>
-    <option value="insurance_clients">Insurance Clients</option>
+    {% for value, label in record_types.items() %}<option value="{{ value }}">{{ label }}</option>{% endfor %}
   </select>
 </section>
 
@@ -95,12 +91,23 @@
     </div>
 
     <div class="form-section-card heatmap-records-card">
+      <section id="heatVenueGroups" hidden>
+        <h2 id="heatVenueGroupsTitle">Venue service totals</h2>
+        <p class="muted">Services are counted by unique MF File and date of death for the selected venue.</p>
+        <div class="table-responsive heatmap-record-table-wrap">
+          <table class="system-report-table heatmap-record-table">
+            <thead><tr><th>Venue</th><th>Town</th><th>Province</th><th>Services</th></tr></thead>
+            <tbody id="heatVenueGroupRows"></tbody>
+          </table>
+        </div>
+        <hr>
+      </section>
       <h2>Current records</h2>
       <div class="table-responsive heatmap-record-table-wrap">
         <table class="system-report-table heatmap-record-table">
           <thead>
             <tr>
-              <th>MF File</th><th>Franchise</th><th>Name</th><th>Town</th><th>Province</th><th>Address</th><th>Contact</th>{% if can_modify_heatmap %}<th>Actions</th>{% endif %}
+              <th>MF File</th><th>Franchise</th><th>Client / Location</th><th>Town</th><th>Province</th><th>Address</th><th>Contact</th>{% if can_modify_heatmap %}<th>Actions</th>{% endif %}
             </tr>
           </thead>
           <tbody id="heatRows"><tr><td colspan="8">Loading...</td></tr></tbody>
