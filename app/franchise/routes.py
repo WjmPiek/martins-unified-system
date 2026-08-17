@@ -7,8 +7,8 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from app.extensions import db
 from app.audit import log_action
-from app.models import Franchise, RoyaltyScale, User, Role, MonthlyFigure
-from app.franchise_context import get_selected_franchise
+from app.models import Franchise, RoyaltyScale, User, Role, MonthlyFigure, user_franchises
+from app.franchise_context import get_accessible_franchises, get_selected_franchise
 
 franchise_bp = Blueprint("franchise", __name__, url_prefix="/franchise")
 
@@ -76,27 +76,10 @@ def can_edit_franchise_financials():
 def accessible_franchises_for_current_user(include_old=False):
     """Return only the franchises the current user may see.
 
-    Normal franchise/regional users only see active franchises linked to their user.
-    Old/no-data franchises stay hidden from Franchise Details until Admin, Super Admin
-    or Finance Manager activates them again from the Old Franchises screen.
+    Franchise visibility is an access-control concern, not a performance-data
+    concern. A valid franchise remains selectable even without recent KPI data.
     """
-    query = Franchise.query
-    if not include_old:
-        query = query.filter(Franchise.is_performance_active == True)
-
-    if current_user.has_permission("franchise_management:view") or current_user.has_permission("franchise_management:manage"):
-        return query.order_by(Franchise.business_name.asc()).all()
-
-    linked = list(getattr(current_user, "assigned_franchises", None) or [])
-    if not include_old:
-        linked = [item for item in linked if getattr(item, "is_performance_active", True)]
-    if linked:
-        return sorted(linked, key=lambda item: item.business_name or "")
-
-    selected = get_selected_franchise()
-    if selected and (include_old or getattr(selected, "is_performance_active", True)):
-        return [selected]
-    return []
+    return sorted(get_accessible_franchises(), key=lambda item: item.business_name or "")
 
 
 def franchise_has_royalty_scale(franchise_id):
@@ -152,9 +135,10 @@ def get_or_create_franchise():
         session["selected_franchise_id"] = franchise.id
         return franchise
 
-    franchise = Franchise.query.filter(Franchise.is_performance_active == True).order_by(Franchise.id.asc()).first()
-    if franchise:
-        return franchise
+    # Never fall through to an unrelated global record. This was the cause of a
+    # Middelburg selection displaying another franchise user's details.
+    if current_user.is_franchise_scoped_user():
+        abort(403)
     franchise = Franchise(business_name="Martins Funerals Franchise")
     db.session.add(franchise)
     db.session.commit()
@@ -312,10 +296,23 @@ def details():
 
         db.session.commit()
         flash("Franchise details saved successfully. Royalty settings were applied to existing monthly figures.", "success")
-        return redirect(url_for("franchise.details"))
+        return redirect(url_for("franchise.details", franchise_id=franchise.id))
 
     scales = RoyaltyScale.query.filter_by(franchise_id=franchise.id).order_by(RoyaltyScale.row_number).all()
-    linked_users = list(franchise.assigned_users) if hasattr(franchise, "assigned_users") else []
+    primary_owner_ids = {
+        row[0] for row in db.session.query(user_franchises.c.user_id).filter(
+            user_franchises.c.franchise_id == franchise.id,
+            user_franchises.c.is_primary == True,
+        ).all()
+    }
+    linked_users = [
+        user for user in (list(franchise.assigned_users) if hasattr(franchise, "assigned_users") else [])
+        if (
+            not user.has_role("Franchise User")
+            or user.id in primary_owner_ids
+            or len(getattr(user, "assigned_franchises", []) or []) == 1
+        )
+    ]
     franchise_users = sorted(
         linked_users,
         key=lambda user: (user.name or "", user.surname or "")

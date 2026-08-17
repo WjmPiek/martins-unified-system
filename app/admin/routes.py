@@ -154,17 +154,31 @@ def normalise_user_scope_for_role(user, role_name, franchise_ids=None):
     if role_requires_franchise_scope(role_name):
         selected_franchises = Franchise.query.filter(
             Franchise.id.in_(franchise_ids or []),
-            Franchise.is_performance_active == True,
         ).order_by(Franchise.business_name).all()
         if not selected_franchises:
             return False, "Please link at least one active franchise for Regional Manager or Franchise User accounts."
         user.assigned_franchises = selected_franchises
+        db.session.flush()
+        if role_name == "Franchise User":
+            if len(selected_franchises) != 1:
+                return False, "A Franchise User must be linked to exactly one primary franchise."
+            db.session.execute(
+                user_franchises.update()
+                .where(user_franchises.c.user_id == user.id)
+                .values(is_primary=False)
+            )
+            db.session.execute(
+                user_franchises.update()
+                .where(user_franchises.c.user_id == user.id)
+                .where(user_franchises.c.franchise_id == selected_franchises[0].id)
+                .values(is_primary=True)
+            )
         return True, ""
 
     # Finance/Admin-side users are Martins users. Finance Manager is linked to all active franchises.
     if is_role_admin_side(role_name):
         if role_name == "Finance Manager":
-            user.assigned_franchises = Franchise.query.filter(Franchise.is_performance_active == True).order_by(Franchise.business_name).all()
+            user.assigned_franchises = Franchise.query.order_by(Franchise.business_name).all()
         else:
             user.assigned_franchises = []
         return True, ""
@@ -189,9 +203,9 @@ def tidy_finance_admin_users():
             user.roles = cleaned_roles
             changed += 1
         if role_name == "Finance Manager":
-            active_franchises = Franchise.query.filter(Franchise.is_performance_active == True).order_by(Franchise.business_name).all()
-            if set(user.assigned_franchises) != set(active_franchises):
-                user.assigned_franchises = active_franchises
+            all_franchises = Franchise.query.order_by(Franchise.business_name).all()
+            if set(user.assigned_franchises) != set(all_franchises):
+                user.assigned_franchises = all_franchises
                 changed += 1
         elif user.assigned_franchises:
             user.assigned_franchises = []
@@ -324,6 +338,22 @@ def repair_existing_user_visibility():
             if not user.parent_franchise_user_id and user.created_by_user_id in owner_ids:
                 user.parent_franchise_user_id = user.created_by_user_id
                 changed += 1
+
+    # Restore safely identifiable owner links removed by older grouped imports.
+    # This does not create accounts during a GET request.
+    for franchise in Franchise.query.order_by(Franchise.id).all():
+        primary_owner_id = db.session.execute(
+            db.select(user_franchises.c.user_id)
+            .where(user_franchises.c.franchise_id == franchise.id)
+            .where(user_franchises.c.is_primary == True)
+            .limit(1)
+        ).scalar()
+        if primary_owner_id:
+            continue
+        owner, _created = find_franchise_user_for_main_franchise(franchise, create_missing=False)
+        if owner:
+            ensure_own_primary_franchise_link(owner, franchise)
+            changed += 1
 
     if changed:
         db.session.flush()
@@ -470,11 +500,8 @@ def seed():
 def users():
     repair_existing_user_visibility()
     db.session.commit()
-    # Keep the franchise selector clean: branches with no KPI data in the last 3 months
-    # are hidden automatically and shown in the Old Franchises tab until reactivated.
     now = datetime.utcnow()
-    auto_hide_inactive_franchises(now.month, now.year, [franchise.id for franchise in Franchise.query.all()], current_user.id)
-    franchises = Franchise.query.filter(Franchise.is_performance_active == True).order_by(Franchise.business_name).all()
+    franchises = Franchise.query.order_by(Franchise.business_name).all()
     old_franchise_rows = inactive_franchise_candidates(now.month, now.year, [franchise.id for franchise in Franchise.query.order_by(Franchise.business_name).all()])
     old_franchises = [row for row in old_franchise_rows if not row["is_performance_active"]]
     selected_franchise_id = request.args.get("franchise_id", type=int)
@@ -498,7 +525,7 @@ def users():
         or user.has_role("Finance Assistant")
         or user.has_role("Regional Manager")
     ]
-    franchise_owner_users = active_recent_franchise_owner_users(now.month, now.year)
+    franchise_owner_users = all_franchise_owner_users()
     all_franchise_owner_user_rows = all_franchise_owner_users()
     franchise_employee_users = [
         user for user in all_users
@@ -552,10 +579,8 @@ def users():
 @permission_required("users:view")
 def franchise_users():
     repair_existing_user_visibility()
-    now = datetime.utcnow()
-    auto_hide_inactive_franchises(now.month, now.year, [franchise.id for franchise in Franchise.query.all()], current_user.id)
     db.session.commit()
-    franchises = Franchise.query.filter(Franchise.is_performance_active == True).order_by(Franchise.business_name).all()
+    franchises = Franchise.query.order_by(Franchise.business_name).all()
     franchise_users = all_franchise_owner_users()
     return render_template(
         "admin/franchise_users.html",
@@ -598,7 +623,7 @@ def create_admin_user():
         abort(403)
 
     if request.method == "GET":
-        franchises = Franchise.query.filter(Franchise.is_performance_active == True).order_by(Franchise.business_name).all()
+        franchises = Franchise.query.order_by(Franchise.business_name).all()
         return render_template(
             "admin/create_martins_user.html",
             admin_creatable_roles=admin_creatable_roles(),
@@ -639,13 +664,13 @@ def create_admin_user():
     )
     user.set_password(password)
     user.roles.append(role)
+    db.session.add(user)
 
     ok, message = normalise_user_scope_for_role(user, role.name, franchise_ids)
     if not ok:
         flash(message, "danger")
         return redirect(url_for("admin.users"))
 
-    db.session.add(user)
     db.session.commit()
     log_action("Users", "Created admin-managed user", f"User: {email}; Role: {role.name}")
     flash(f"User {user.full_name} was created as {role.name}.", "success")
@@ -697,23 +722,29 @@ def update_user_roles(user_id):
         return redirect(url_for("admin.users"))
     franchise_ids = [int(item) for item in request.form.getlist("franchise_ids")]
 
-    # Mother-company finance/admin users must never sit under a franchise. Finance Manager is linked to all active franchise users/franchises.
+    # Mother-company finance/admin users must never sit under a franchise.
     if selected_role_names & {"Admin", "Finance Manager", "Finance Assistant"}:
         user.parent_franchise_user_id = None
         if "Finance Manager" in selected_role_names:
-            user.assigned_franchises = Franchise.query.filter(Franchise.is_performance_active == True).order_by(Franchise.business_name).all()
+            user.assigned_franchises = Franchise.query.order_by(Franchise.business_name).all()
         else:
             user.assigned_franchises = []
     elif selected_role_names & {"Regional Manager", "Franchise User"}:
         user.parent_franchise_user_id = None
         selected_franchises = Franchise.query.filter(
             Franchise.id.in_(franchise_ids or []),
-            Franchise.is_performance_active == True,
         ).order_by(Franchise.business_name).all()
         if not selected_franchises:
-            flash("Regional Manager and Franchise User accounts must be linked to at least one active franchise.", "danger")
+            flash("Regional Manager and Franchise User accounts must be linked to at least one franchise.", "danger")
+            return redirect(url_for("admin.users"))
+        if "Franchise User" in selected_role_names and len(selected_franchises) != 1:
+            flash("A Franchise User must be linked to exactly one primary franchise.", "danger")
             return redirect(url_for("admin.users"))
         user.assigned_franchises = selected_franchises
+        db.session.flush()
+        if "Franchise User" in selected_role_names:
+            db.session.execute(user_franchises.update().where(user_franchises.c.user_id == user.id).values(is_primary=False))
+            db.session.execute(user_franchises.update().where(user_franchises.c.user_id == user.id).where(user_franchises.c.franchise_id == selected_franchises[0].id).values(is_primary=True))
     else:
         # Admin > Users is only for Martins users and registered franchise owner/user accounts.
         # Franchise employees are managed separately under Admin > Employees and created by franchise owners.
@@ -777,19 +808,25 @@ def update_user(user_id):
     if selected_role_names & {"Admin", "Finance Manager", "Finance Assistant"}:
         user.parent_franchise_user_id = None
         if "Finance Manager" in selected_role_names:
-            user.assigned_franchises = Franchise.query.filter(Franchise.is_performance_active == True).order_by(Franchise.business_name).all()
+            user.assigned_franchises = Franchise.query.order_by(Franchise.business_name).all()
         else:
             user.assigned_franchises = []
     elif selected_role_names & {"Regional Manager", "Franchise User"}:
         user.parent_franchise_user_id = None
         selected_franchises = Franchise.query.filter(
             Franchise.id.in_(franchise_ids or []),
-            Franchise.is_performance_active == True,
         ).order_by(Franchise.business_name).all()
         if not selected_franchises:
-            flash("Regional Manager and Franchise User accounts must be linked to at least one active franchise.", "danger")
+            flash("Regional Manager and Franchise User accounts must be linked to at least one franchise.", "danger")
+            return redirect(url_for("admin.users"))
+        if "Franchise User" in selected_role_names and len(selected_franchises) != 1:
+            flash("A Franchise User must be linked to exactly one primary franchise.", "danger")
             return redirect(url_for("admin.users"))
         user.assigned_franchises = selected_franchises
+        db.session.flush()
+        if "Franchise User" in selected_role_names:
+            db.session.execute(user_franchises.update().where(user_franchises.c.user_id == user.id).values(is_primary=False))
+            db.session.execute(user_franchises.update().where(user_franchises.c.user_id == user.id).where(user_franchises.c.franchise_id == selected_franchises[0].id).values(is_primary=True))
     else:
         user.parent_franchise_user_id = None
 
@@ -1226,7 +1263,7 @@ def split_grouped_franchise_names(value):
     return result
 
 
-def find_franchise_user_for_main_franchise(main_franchise):
+def find_franchise_user_for_main_franchise(main_franchise, create_missing=True):
     """Find or create the franchise-side user that owns a grouped royalty set.
 
     Important: a franchise may already be linked to another user's group.  For
@@ -1245,8 +1282,25 @@ def find_franchise_user_for_main_franchise(main_franchise):
             user.roles.append(role)
         return user, False
 
+    for contact_email in (
+        getattr(main_franchise, "franchisee_email", None),
+        getattr(main_franchise, "public_email", None),
+    ):
+        if not contact_email:
+            continue
+        user = User.query.filter(db.func.lower(User.email) == contact_email.strip().lower()).first()
+        if user and not is_admin_side_user(user):
+            role = get_or_create_role("Franchise User")
+            if role not in user.roles:
+                user.roles.append(role)
+            return user, False
+
     normalized_main = normalize_franchise_key(main_franchise.business_name)
-    for user in getattr(main_franchise, "assigned_users", []) or []:
+    assigned_owner_candidates = [
+        user for user in (getattr(main_franchise, "assigned_users", []) or [])
+        if "Franchise User" in user_role_names(user) and not is_admin_side_user(user)
+    ]
+    for user in assigned_owner_candidates:
         if not (user_role_names(user) & franchise_side_roles) or is_admin_side_user(user):
             continue
         primary_id = db.session.execute(
@@ -1261,6 +1315,25 @@ def find_franchise_user_for_main_franchise(main_franchise):
         user_key = normalize_franchise_key(f"{user.name} {user.surname}")
         if normalized_main and normalized_main in user_key:
             return user, False
+    single_branch_owners = [
+        user for user in assigned_owner_candidates
+        if len(getattr(user, "assigned_franchises", []) or []) == 1
+    ]
+    if len(single_branch_owners) == 1:
+        return single_branch_owners[0], False
+
+    # A previous grouped import may have removed the branch's access link while
+    # leaving its login account in place. Recover that owner by identity before
+    # creating another user with a generated email address.
+    for user in User.query.order_by(User.id).all():
+        if "Franchise User" not in user_role_names(user) or is_admin_side_user(user):
+            continue
+        identity_values = [user.full_name, (user.email or "").split("@", 1)[0]]
+        if any(normalize_franchise_key(value) == normalized_main for value in identity_values if value):
+            return user, False
+
+    if not create_missing:
+        return None, False
 
     display_name = re.sub(r"\s*\(F\)\s*$", "", main_franchise.business_name or "Franchise", flags=re.I).strip() or "Franchise"
     user, created = get_or_create_user(display_name, "User", email, "Franchise User", franchises=[main_franchise])
@@ -1268,11 +1341,9 @@ def find_franchise_user_for_main_franchise(main_franchise):
 
 
 def remove_group_links_from_other_franchise_users(user, franchise_ids):
-    """Remove grouped-branch links from other franchise-side users before re-import.
+    """Remove stale secondary group links while preserving branch ownership.
 
-    This prevents old incorrect groups (for example Dobsonville owning Soweto)
-    from remaining after the spreadsheet says Soweto is the main franchise.
-    Admin/Finance users are not touched.
+    Primary links are the tenant boundary and are never deleted here.
     """
     if not franchise_ids:
         return
@@ -1290,12 +1361,13 @@ def remove_group_links_from_other_franchise_users(user, franchise_ids):
         user_franchises.delete()
         .where(user_franchises.c.franchise_id.in_(franchise_ids))
         .where(user_franchises.c.user_id != user.id)
+        .where(user_franchises.c.is_primary == False)
         .where(user_franchises.c.user_id.in_(franchise_side_user_ids))
     )
 
 
 def set_primary_franchise_link(user, main_franchise, linked_franchises):
-    """Assign linked franchises and mark the main franchise as primary in user_franchises."""
+    """Record a royalty group without deleting each branch owner's access."""
     ordered = []
     seen = set()
     for franchise in [main_franchise] + list(linked_franchises or []):
@@ -1310,6 +1382,24 @@ def set_primary_franchise_link(user, main_franchise, linked_franchises):
         user_franchises.update()
         .where(user_franchises.c.user_id == user.id)
         .where(user_franchises.c.franchise_id == main_franchise.id)
+        .values(is_primary=True)
+    )
+
+
+def ensure_own_primary_franchise_link(user, franchise):
+    """Keep one franchise owner attached to their own primary franchise."""
+    if franchise not in user.assigned_franchises:
+        user.assigned_franchises.append(franchise)
+    db.session.flush()
+    db.session.execute(
+        user_franchises.update()
+        .where(user_franchises.c.user_id == user.id)
+        .values(is_primary=False)
+    )
+    db.session.execute(
+        user_franchises.update()
+        .where(user_franchises.c.user_id == user.id)
+        .where(user_franchises.c.franchise_id == franchise.id)
         .values(is_primary=True)
     )
 
@@ -1655,31 +1745,17 @@ def import_grouped_franchises():
             })
             unmatched.extend(row_unmatched)
 
-        # Remove existing franchise-side links for every branch mentioned in the
-        # sheet before adding the new links.  This is the important fix: old
-        # groups such as Dobsonville -> Soweto cannot remain when the Excel row
-        # says Soweto must be the main branch.  Admin/Finance users are not
-        # touched.
-        if all_matched_franchise_ids:
-            franchise_side_roles = {"Franchise User", "Franchise Manager", "Read Only User"}
-            franchise_side_user_ids = [
-                row[0]
-                for row in db.session.query(User.id)
-                .join(User.roles)
-                .filter(Role.name.in_(franchise_side_roles))
-                .all()
-            ]
-            if franchise_side_user_ids:
-                db.session.execute(
-                    user_franchises.delete()
-                    .where(user_franchises.c.franchise_id.in_(list(all_matched_franchise_ids)))
-                    .where(user_franchises.c.user_id.in_(franchise_side_user_ids))
-                )
-                db.session.flush()
-
         for item in import_rows:
             main_franchise = item["main"]
             linked_franchises = item["franchises"]
+            # Every branch keeps (or regains) its own primary owner login. The
+            # main user's extra links below are royalty-group metadata only and
+            # never grant that login access to another owner's working screens.
+            for branch in linked_franchises:
+                branch_owner, owner_created = find_franchise_user_for_main_franchise(branch)
+                ensure_own_primary_franchise_link(branch_owner, branch)
+                if owner_created:
+                    created_users += 1
             user, created = find_franchise_user_for_main_franchise(main_franchise)
             if created:
                 created_users += 1
@@ -3128,7 +3204,7 @@ def franchise_employees():
     owners = {user.id: user for user in User.query.filter(User.id.in_(owner_ids)).all()} if owner_ids else {}
     now = datetime.utcnow()
     franchise_owners = all_franchise_owner_users()
-    franchises = Franchise.query.filter(Franchise.is_performance_active == True).order_by(Franchise.business_name).all()
+    franchises = Franchise.query.order_by(Franchise.business_name).all()
     employee_roles = Role.query.filter(Role.name.in_(["Franchise Manager", "Franchise Employee", "Franchise Agent"])).order_by(Role.name).all()
     return render_template(
         "admin/franchise_employees.html",

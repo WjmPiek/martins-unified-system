@@ -132,7 +132,7 @@
 
       <div class="dashboard-action-grid">
         {% if current_user.has_permission('franchise_details:view') %}
-        <a class="dashboard-action-card" href="{{ url_for('franchise.details') }}">
+        <a class="dashboard-action-card" href="{{ url_for('franchise.details', franchise_id=selected_franchise.id) }}">
           <strong>Franchise Details</strong>
           <span>View and maintain selected franchise profile.</span>
         </a>

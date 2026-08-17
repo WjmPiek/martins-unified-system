@@ -130,6 +130,8 @@ class User(UserMixin, db.Model):
         ).scalar()
 
     def accessible_franchises(self):
+        if any(role.name in {"Admin", "Super Admin", "Finance Manager"} for role in self.roles):
+            return Franchise.query.order_by(Franchise.business_name).all()
         if self.is_franchise_scoped_user():
             franchise_id = self.assigned_franchise_id()
             franchise = Franchise.query.get(franchise_id) if franchise_id else None
@@ -149,6 +151,8 @@ class User(UserMixin, db.Model):
             franchise_id = int(franchise_id)
         except (TypeError, ValueError):
             return False
+        if any(role.name in {"Admin", "Super Admin", "Finance Manager"} for role in self.roles):
+            return True
         if self.is_franchise_scoped_user():
             return franchise_id == self.assigned_franchise_id()
         # Access to an individual franchise follows the same permission model.

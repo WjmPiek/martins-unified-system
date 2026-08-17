@@ -8,6 +8,8 @@ def is_privileged_user():
         return False
     if current_user.is_franchise_scoped_user():
         return False
+    if current_user.has_role("Admin") or current_user.has_role("Super Admin") or current_user.has_role("Finance Manager"):
+        return True
     return current_user.has_permission("franchise_management:view") or current_user.has_permission("franchise_management:manage")
 
 
