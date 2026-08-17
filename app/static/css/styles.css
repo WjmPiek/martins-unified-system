@@ -3841,6 +3841,70 @@ td input, td select, td textarea {
   background: #fbf9fd !important;
 }
 
+/* Admin > Users > Create User: keep franchise checkboxes and names aligned. */
+.create-martins-user-form .franchise-scope-options {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fill, minmax(min(260px, 100%), 1fr)) !important;
+  gap: 12px !important;
+  align-items: stretch !important;
+}
+.create-martins-user-form .franchise-scope-options .modal-role-option {
+  display: grid !important;
+  grid-template-columns: 22px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 10px !important;
+  width: 100% !important;
+  min-height: 54px !important;
+  margin: 0 !important;
+  padding: 12px 14px !important;
+  overflow: hidden !important;
+}
+.create-martins-user-form .franchise-scope-options input[type="checkbox"],
+.create-martins-user-form .create-new-franchise-toggle input[type="checkbox"] {
+  width: 18px !important;
+  min-width: 18px !important;
+  height: 18px !important;
+  min-height: 18px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+.create-martins-user-form .franchise-scope-options .modal-role-option span {
+  min-width: 0 !important;
+  overflow-wrap: break-word !important;
+  word-break: normal !important;
+  white-space: normal !important;
+  text-align: left !important;
+}
+.new-franchise-choice { margin-top: 16px; }
+.create-new-franchise-toggle {
+  display: inline-grid !important;
+  grid-template-columns: 22px minmax(0, 1fr) !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin: 0 !important;
+}
+.new-franchise-fields {
+  margin-top: 16px;
+  padding: 16px;
+  border: 1px solid #ded6e5;
+  border-radius: 12px;
+  background: #faf8fc;
+}
+.new-franchise-fields h3 { margin: 0 0 6px; }
+.new-franchise-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
+  gap: 14px;
+}
+.empty-franchise-message {
+  grid-column: 1 / -1;
+  padding: 14px;
+  border: 1px dashed #a982ba;
+  border-radius: 10px;
+  color: #51475a;
+  background: #faf8fc;
+}
+
 .royalties-table tr.grouped-linked-row td:first-child {
   border-left: 4px solid #d6c8e8 !important;
 }
