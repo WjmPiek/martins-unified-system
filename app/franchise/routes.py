@@ -169,10 +169,19 @@ def renumber_royalty_scales(franchise):
     db.session.flush()
 
 
-def parse_date(value):
+def parse_date(value, field_label="Date"):
+    value = (value or "").strip()
     if not value:
         return None
-    return datetime.strptime(value, "%Y-%m-%d").date()
+    if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        raise ValueError(f"{field_label} must use a four-digit year in YYYY-MM-DD format.")
+    try:
+        parsed = datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError(f"{field_label} is not a valid calendar date.") from exc
+    if parsed.year < 1900 or parsed.year > 2100:
+        raise ValueError(f"{field_label} year must be between 1900 and 2100.")
+    return parsed
 
 
 def format_sa_contact_number(value):
@@ -205,6 +214,23 @@ def details():
         if not current_user.has_permission("franchise_details:edit"):
             abort(403)
 
+        agreement_start_date = franchise.agreement_start_date
+        agreement_end_date = franchise.agreement_end_date
+        if can_edit_agreement:
+            try:
+                agreement_start_date = parse_date(
+                    request.form.get("agreement_start_date"), "Agreement Start Date"
+                )
+                agreement_end_date = parse_date(
+                    request.form.get("agreement_end_date"), "Agreement End Date"
+                )
+            except ValueError as exc:
+                flash(str(exc), "danger")
+                return redirect(url_for("franchise.details", franchise_id=franchise.id))
+            if agreement_start_date and agreement_end_date and agreement_end_date < agreement_start_date:
+                flash("Agreement End Date cannot be earlier than Agreement Start Date.", "danger")
+                return redirect(url_for("franchise.details", franchise_id=franchise.id))
+
         normal_fields = [
             "business_name", "franchise_code", "ck_business_name", "ck_number", "pty_business_name", "pty_number", "vat_number", "office_address", "office_number",
             "after_hours_number", "franchisee_name", "franchisee_surname", "franchisee_cell",
@@ -219,8 +245,8 @@ def details():
         franchise.franchisee_cell = format_sa_contact_number(franchise.franchisee_cell)
 
         if can_edit_agreement:
-            franchise.agreement_start_date = parse_date(request.form.get("agreement_start_date"))
-            franchise.agreement_end_date = parse_date(request.form.get("agreement_end_date"))
+            franchise.agreement_start_date = agreement_start_date
+            franchise.agreement_end_date = agreement_end_date
             franchise.regional_manager_email = request.form.get("regional_manager_email", "").strip()
             franchise.finance_manager_email = request.form.get("finance_manager_email", "").strip()
             # Gross method is automatic from agreement start date.

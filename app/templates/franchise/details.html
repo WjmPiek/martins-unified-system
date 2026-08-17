@@ -167,10 +167,10 @@
         </div>
         <div class="form-grid">
             <label for="agreement_start_date">Agreement Start Date</label>
-            <input id="agreement_start_date" name="agreement_start_date" type="date" value="{{ franchise.agreement_start_date or '' }}" {% if not can_edit_agreement %}disabled{% endif %}>
+            <input id="agreement_start_date" name="agreement_start_date" type="date" value="{{ franchise.agreement_start_date.isoformat() if franchise.agreement_start_date else '' }}" min="1900-01-01" max="2100-12-31" {% if not can_edit_agreement %}disabled{% endif %}>
 
             <label for="agreement_end_date">Agreement End Date</label>
-            <input id="agreement_end_date" name="agreement_end_date" type="date" value="{{ franchise.agreement_end_date or '' }}" {% if not can_edit_agreement %}disabled{% endif %}>
+            <input id="agreement_end_date" name="agreement_end_date" type="date" value="{{ franchise.agreement_end_date.isoformat() if franchise.agreement_end_date else '' }}" min="1900-01-01" max="2100-12-31" {% if not can_edit_agreement %}disabled{% endif %}>
 
             <label for="regional_manager_email">Regional Manager Email</label>
             <input id="regional_manager_email" name="regional_manager_email" type="email" value="{{ franchise.regional_manager_email or '' }}" {% if not can_edit_agreement %}disabled{% endif %}>
