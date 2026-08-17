@@ -1,8 +1,9 @@
 from collections import Counter
 from datetime import datetime
 from functools import wraps
+from pathlib import Path
 
-from flask import Blueprint, abort, current_app, jsonify, render_template, request, redirect, url_for, flash
+from flask import Blueprint, abort, current_app, jsonify, render_template, request, redirect, url_for, flash, send_file
 from flask_login import current_user, login_required
 from openpyxl import load_workbook
 
@@ -46,6 +47,14 @@ def can_modify_heatmap():
     return any(current_user.has_permission(code) for code in [
         "heat_map:add", "heat_map:edit", "heat_map:import", "heat_map:manage"
     ])
+
+
+def can_import_heatmap():
+    """Allow activated franchise users to import only into their own scope."""
+    return current_user.has_permission("heat_map:import") or (
+        current_user.is_franchise_scoped_user()
+        and current_user.has_permission("heat_map:view")
+    )
 
 
 def accessible_franchises():
@@ -184,8 +193,24 @@ def index():
         selected_franchise=selected,
         provinces=PROVINCES,
         can_modify_heatmap=can_modify_heatmap(),
+        can_import_heatmap=can_import_heatmap(),
         record_types=HEATMAP_RECORD_TYPES,
         google_maps_api_key=current_app.config.get("GOOGLE_MAPS_API_KEY", ""),
+    )
+
+
+@heatmap_bp.route("/template")
+@login_required
+@permission_required("heat_map:view")
+def download_template():
+    template_path = Path(current_app.static_folder) / "templates" / "heatmap_import_template.xlsx"
+    if not template_path.is_file():
+        abort(404)
+    return send_file(
+        template_path,
+        as_attachment=True,
+        download_name="martins-heat-map-import-template.xlsx",
+        mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
 
@@ -211,8 +236,9 @@ def data():
 
 @heatmap_bp.route("/import", methods=["POST"])
 @login_required
-@permission_required("heat_map:import")
 def import_excel():
+    if not can_import_heatmap():
+        abort(403)
     file = request.files.get("file")
     if not file or not file.filename:
         flash("Please choose an Excel file to import.", "danger")

@@ -66,7 +66,12 @@
       {% if can_modify_heatmap %}<button id="heatGeocodeBtn" type="button" class="btn button-auto">Geocode missing</button>{% endif %}
     </div>
 
-    {% if can_modify_heatmap %}
+    <hr>
+    <h2>Excel Template</h2>
+    <p class="muted">Download the Heat Map template, add your own records, then import the completed file below.</p>
+    <a class="btn secondary button-auto" href="{{ url_for('heatmap.download_template') }}">Download Heat Map Template</a>
+
+    {% if can_import_heatmap %}
     <hr>
     <h2>Import Excel</h2>
     <form method="post" action="{{ url_for('heatmap.import_excel') }}" enctype="multipart/form-data">

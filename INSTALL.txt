@@ -1,0 +1,23 @@
+HEAT MAP TEMPLATE DOWNLOAD AND FRANCHISE IMPORT
+
+Copy the app folder from this ZIP into the root of your existing project:
+
+C:\Users\WjmLabtop\OneDrive\SERVER\martins-unified-system\martins-funeral-system
+
+Allow Windows to merge the app folder and replace/add these three files only:
+
+app\heatmap\routes.py
+app\templates\heatmap\index.html
+app\static\templates\heatmap_import_template.xlsx
+
+No database migration is included or required.
+
+Then run from PowerShell in your project root:
+
+git add app/heatmap/routes.py app/templates/heatmap/index.html app/static/templates/heatmap_import_template.xlsx
+git commit -m "Add Heat Map import template download"
+git push
+
+After Render deploys, open Heat Map. Admin and activated franchise users will
+see Download Heat Map Template. Franchise users can import the completed file
+only into their own franchise.
