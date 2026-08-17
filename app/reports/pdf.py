@@ -349,7 +349,7 @@ def build_franchise_details_pdf(franchise, scales, generated_by):
         ["Online", "Website", getattr(franchise, "website_url", "")],
         ["Agreement", "From", getattr(franchise, "agreement_start_date", "")],
         ["Agreement", "To", getattr(franchise, "agreement_end_date", "")],
-        ["Royalty", "Minimum Royalty Amount", _money(getattr(franchise, "minimum_royalty_amount", 0))],
+        ["Royalty", "Minimum Royalty Amount", "NONE (scale only)" if getattr(franchise, "minimum_royalty_is_none", False) else _money(getattr(franchise, "minimum_royalty_amount", 0))],
         ["Royalty", "Gross Method", _gross_method_label(franchise)],
     ]
     for scale in scales:

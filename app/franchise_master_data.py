@@ -424,7 +424,7 @@ def _write_master(ws, franchises, integrity_rows):
             f.agreement_start_date,
             f.agreement_end_date,
             f.royalty_gross_method,
-            float(f.minimum_royalty_amount or 0),
+            "NONE" if getattr(f, "minimum_royalty_is_none", False) else float(f.minimum_royalty_amount or 0),
             "Yes" if getattr(f, "is_performance_active", True) else "No",
         ]
         for i in range(ROYALTY_SCALE_COUNT):
@@ -782,6 +782,8 @@ def import_franchise_master_workbook(file_storage) -> Dict[str, Any]:
 
 def _update_franchise_from_row(franchise: Franchise, row: Dict[str, Any]) -> int:
     changes = 0
+    minimum_raw = row.get("Minimum Royalty Amount")
+    minimum_is_none = str(minimum_raw or "").strip().lower() in {"none", "no minimum", "n/a"}
     province = str(row.get("Province") or infer_province(row.get("Business Name"), row.get("Office Address")) or "Unassigned").strip()
     updates = {
         "business_name": str(row.get("Business Name") or franchise.business_name or "").strip(),
@@ -800,7 +802,8 @@ def _update_franchise_from_row(franchise: Franchise, row: Dict[str, Any]) -> int
         "public_email": str(row.get("Public Email") or "").strip().lower(),
         "agreement_start_date": parse_date(row.get("Agreement Start Date")),
         "agreement_end_date": parse_date(row.get("Agreement End Date")),
-        "minimum_royalty_amount": decimal_or_zero(row.get("Minimum Royalty Amount")),
+        "minimum_royalty_amount": Decimal("0") if minimum_is_none else decimal_or_zero(minimum_raw),
+        "minimum_royalty_is_none": minimum_is_none,
         "is_performance_active": bool_from_cell(row.get("Active For Performance"), getattr(franchise, "is_performance_active", True)),
     }
     method = str(row.get("Royalty Method") or franchise.royalty_gross_method or "old").lower().strip()

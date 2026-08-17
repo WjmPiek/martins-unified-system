@@ -188,6 +188,12 @@
                 <h2>Royalty Scale</h2>
 
                 <div class="form-grid">
+                    <label for="minimum_royalty_mode">Minimum Royalty</label>
+                    <select id="minimum_royalty_mode" name="minimum_royalty_mode" onchange="toggleMinimumRoyaltyAmount()" {% if not can_edit_scale %}disabled{% endif %}>
+                        <option value="amount" {% if not franchise.minimum_royalty_is_none %}selected{% endif %}>Amount</option>
+                        <option value="none" {% if franchise.minimum_royalty_is_none %}selected{% endif %}>NONE — use royalty scale only</option>
+                    </select>
+
                     <label for="minimum_royalty_amount">Minimum Royalty Amount</label>
                     <input id="minimum_royalty_amount"
                            name="minimum_royalty_amount"
@@ -195,7 +201,9 @@
                            step="0.01"
                            min="0"
                            value="{{ franchise.minimum_royalty_amount or 0 }}"
+                           {% if franchise.minimum_royalty_is_none %}disabled{% endif %}
                            {% if not can_edit_scale %}disabled{% endif %}>
+                    <p class="muted small" id="minimum-royalty-help">Select NONE when the agreement has no minimum royalty. The royalty amount will then be calculated only from the matching scale bracket.</p>
 
                                         <label>Royalty Calculation Method</label>
                     <input type="text" value="{% if franchise.royalty_gross_method == 'new' %}Gross = New Gross Method{% else %}Gross = Old{% endif %}" disabled>
@@ -308,6 +316,15 @@ function updateRoyaltyScaleRowNumbers() {
     });
 }
 
+function toggleMinimumRoyaltyAmount() {
+    const mode = document.getElementById('minimum_royalty_mode');
+    const amount = document.getElementById('minimum_royalty_amount');
+    if (!mode || !amount) return;
+    const hasNoMinimum = mode.value === 'none';
+    amount.disabled = hasNoMinimum;
+    if (hasNoMinimum) amount.value = '0';
+}
+
 function deleteExistingRoyaltyScaleRow(button, scaleId) {
     const deleted = document.getElementById('deleted-royalty-scales');
     if (deleted && scaleId) {
@@ -348,6 +365,7 @@ function addRoyaltyScaleRow() {
 }
 
 updateRoyaltyScaleRowNumbers();
+toggleMinimumRoyaltyAmount();
 </script>
 {% endif %}
 

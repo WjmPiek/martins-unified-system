@@ -95,7 +95,9 @@ def missing_royalty_setup_items(franchise):
         missing.append("agreement start date")
     if not franchise.agreement_end_date:
         missing.append("agreement end date")
-    if not franchise.minimum_royalty_amount or Decimal(franchise.minimum_royalty_amount or 0) <= 0:
+    if not getattr(franchise, "minimum_royalty_is_none", False) and (
+        not franchise.minimum_royalty_amount or Decimal(franchise.minimum_royalty_amount or 0) <= 0
+    ):
         missing.append("minimum royalty")
     if not franchise_has_royalty_scale(franchise.id):
         missing.append("royalty scale brackets")
@@ -284,7 +286,13 @@ def details():
 
         if can_edit_scale:
             try:
-                franchise.minimum_royalty_amount = request.form.get("minimum_royalty_amount") or 0
+                minimum_mode = (request.form.get("minimum_royalty_mode") or "amount").strip().lower()
+                franchise.minimum_royalty_is_none = minimum_mode == "none"
+                franchise.minimum_royalty_amount = (
+                    Decimal("0")
+                    if franchise.minimum_royalty_is_none
+                    else parse_decimal(request.form.get("minimum_royalty_amount"))
+                )
                 # Gross method is automatic from agreement start date and is updated in the agreement block.
                 franchise.royalty_gross_method = "new" if (franchise.agreement_start_date and franchise.agreement_start_date.year >= 2018) else "old"
             except Exception:

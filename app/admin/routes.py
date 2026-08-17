@@ -1093,7 +1093,7 @@ def set_auto_gross_method_from_agreement(franchise):
     franchise.royalty_gross_method = "new" if (franchise.agreement_start_date and franchise.agreement_start_date.year >= 2018) else "old"
 
 
-def sync_royalty_scales_from_contract_file(franchise, parsed_rows, raw_scale_lines, minimum):
+def sync_royalty_scales_from_contract_file(franchise, parsed_rows, raw_scale_lines, minimum, minimum_is_none=False):
     """Fully sync royalty-scale fields from the latest uploaded Contract Summary file.
 
     This intentionally replaces the database values every time the Excel file is
@@ -1102,7 +1102,8 @@ def sync_royalty_scales_from_contract_file(franchise, parsed_rows, raw_scale_lin
     """
     franchise.imported_royalty_scale_text = "\n".join(raw_scale_lines or [])
     franchise.imported_royalty_percentage = (parsed_rows[0].get("percentage") if parsed_rows else 0) or 0
-    franchise.minimum_royalty_amount = minimum if minimum is not None else 0
+    franchise.minimum_royalty_is_none = bool(minimum_is_none)
+    franchise.minimum_royalty_amount = 0 if minimum_is_none else (minimum if minimum is not None else 0)
 
     RoyaltyScale.query.filter_by(franchise_id=franchise.id).delete()
     db.session.flush()
@@ -1858,8 +1859,13 @@ def import_contract_summary():
             raw_scale_lines = []
             parsed_rows = []
             minimum = None
+            minimum_is_none = False
             for r in rows:
-                parsed = parse_royalty_scale_line(worksheet.cell(r, 18).value)
+                raw_scale_value = worksheet.cell(r, 18).value
+                raw_scale_text = clean_excel_text(raw_scale_value)
+                if re.search(r"\b(no minimum|minimum\s*[:=-]?\s*none)\b", raw_scale_text, re.I):
+                    minimum_is_none = True
+                parsed = parse_royalty_scale_line(raw_scale_value)
                 if not parsed:
                     continue
                 raw = parsed.get("raw", "")
@@ -1867,13 +1873,16 @@ def import_contract_summary():
                     raw_scale_lines.append(raw)
                 if parsed.get("minimum") is not None:
                     minimum = parsed["minimum"]
+                    minimum_is_none = False
                     continue
                 if "percentage" in parsed:
                     parsed_rows.append(parsed)
 
             # Full database sync from the latest uploaded Excel file.
             # This clears old scale rows first, then rebuilds them exactly from the new file.
-            updated_scale_rows = sync_royalty_scales_from_contract_file(franchise, parsed_rows, raw_scale_lines, minimum)
+            updated_scale_rows = sync_royalty_scales_from_contract_file(
+                franchise, parsed_rows, raw_scale_lines, minimum, minimum_is_none
+            )
             if updated_scale_rows:
                 updated_scales += 1
             owner, owner_created = ensure_franchise_owner_login(franchise)
@@ -3545,9 +3554,15 @@ def edit_franchise_master_record(franchise_id):
         franchise.franchisee_email = text_value("franchisee_email").lower()
         franchise.public_email = text_value("public_email").lower()
         franchise.royalty_gross_method = text_value("royalty_gross_method") or "old"
-        try: franchise.minimum_royalty_amount = Decimal(text_value("minimum_royalty_amount") or "0")
+        franchise.minimum_royalty_is_none = text_value("minimum_royalty_mode").lower() == "none"
+        try:
+            franchise.minimum_royalty_amount = (
+                Decimal("0")
+                if franchise.minimum_royalty_is_none
+                else Decimal(text_value("minimum_royalty_amount") or "0")
+            )
         except InvalidOperation:
-            flash("Minimum royalty must be a valid number.", "danger")
+            flash("Minimum royalty must be a valid number or NONE.", "danger")
             return render_template("admin/edit_franchise_master_record.html", franchise=franchise, linked_user=linked_user, scales=scales)
         for attr, field in (("agreement_start_date", "agreement_start_date"), ("agreement_end_date", "agreement_end_date")):
             raw = text_value(field)

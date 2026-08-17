@@ -226,6 +226,7 @@ class Franchise(db.Model):
     agreement_start_date = db.Column(db.Date)
     agreement_end_date = db.Column(db.Date)
     minimum_royalty_amount = db.Column(db.Numeric(12, 2), default=0, nullable=False)
+    minimum_royalty_is_none = db.Column(db.Boolean, default=False, nullable=False)
     royalty_gross_method = db.Column(db.String(20), nullable=False, default="old")
     imported_royalty_scale_text = db.Column(db.Text, default="")
     imported_royalty_percentage = db.Column(db.Numeric(5, 2), default=0)

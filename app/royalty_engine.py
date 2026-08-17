@@ -319,7 +319,11 @@ def calculate_royalty_amount(franchise: Franchise | None, royalty_base: Decimal)
             errors.append("no royalty bracket matched")
 
     calculated = (royalty_base * percentage) / Decimal("100")
-    minimum = decimal_value(getattr(franchise, "minimum_royalty_amount", 0)) if franchise else Decimal("0")
+    minimum = (
+        Decimal("0")
+        if franchise and getattr(franchise, "minimum_royalty_is_none", False)
+        else decimal_value(getattr(franchise, "minimum_royalty_amount", 0)) if franchise else Decimal("0")
+    )
     minimum_applied = minimum > 0 and calculated < minimum
     royalty_amount = minimum if minimum_applied else calculated
     return percentage, royalty_amount, minimum, minimum_applied, source_franchise, source_label, warnings, errors
