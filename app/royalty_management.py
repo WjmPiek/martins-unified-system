@@ -183,8 +183,13 @@ def snapshot_monthly_figure(monthly_figure: MonthlyFigure, *, commit: bool = Fal
 
 def recalculate_royalties_for_period(month: int, year: int, franchise_ids: Optional[Iterable[int]] = None, *, commit: bool = True) -> dict:
     query = MonthlyFigure.query.filter_by(month=int(month), year=int(year))
+    calculation_ids = None
     if franchise_ids:
-        query = query.filter(MonthlyFigure.franchise_id.in_(list(franchise_ids)))
+        calculation_ids = {int(item) for item in franchise_ids if item}
+        from app.grouped_royalties import grouped_franchise_sets
+        for group in grouped_franchise_sets(calculation_ids):
+            calculation_ids.update(franchise.id for franchise in group["linked"])
+        query = query.filter(MonthlyFigure.franchise_id.in_(calculation_ids))
     rows = query.order_by(MonthlyFigure.franchise_id).all()
     total = 0
     needs_review = 0
@@ -220,11 +225,11 @@ def recalculate_royalties_for_period(month: int, year: int, franchise_ids: Optio
     try:
         from app.grouped_royalties import apply_grouped_royalties_for_period
         grouped_result = apply_grouped_royalties_for_period(
-            int(month), int(year), franchise_ids
+            int(month), int(year), calculation_ids
         )
         if grouped_result.get("groups"):
-            # Group synchronization updates the snapshots created above. Count
-            # the final billing state, not the temporary branch-by-branch state.
+            # Group synchronization adds separate summary diagnostics while the
+            # snapshot's normal fields remain each franchise's own result.
             snapshot_ids = [row.id for row in rows if row.id]
             snapshots = RoyaltyCalculationSnapshot.query.filter(
                 RoyaltyCalculationSnapshot.monthly_figure_id.in_(snapshot_ids)

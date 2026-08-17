@@ -130,7 +130,12 @@ def _append_note(row, note):
 
 
 def _sync_grouped_snapshot(row, main, result, *, is_main):
-    """Keep audit snapshots aligned with the final grouped billing result."""
+    """Add grouped-summary audit data without replacing the branch result.
+
+    A monthly figure and its snapshot always belong to one franchise.  The
+    grouped result is a separate, derived summary, so it is recorded only in
+    diagnostics and must never overwrite that franchise's percentage or amount.
+    """
     from app.models import RoyaltyCalculationSnapshot
 
     snapshot = RoyaltyCalculationSnapshot.query.filter_by(monthly_figure_id=row.id).first()
@@ -147,41 +152,30 @@ def _sync_grouped_snapshot(row, main, result, *, is_main):
         "group_main_franchise_id": main.id,
         "group_main_franchise_name": main.business_name,
         "group_role": "main" if is_main else "linked_branch",
+        "group_summary": {
+            "royalty_method": result.method,
+            "royalty_base": str(result.royalty_base),
+            "royalty_percentage": str(result.royalty_percentage),
+            "royalty_amount": str(result.royalty_amount),
+            "minimum_royalty_amount": str(result.minimum_royalty_amount),
+            "minimum_royalty_applied": bool(result.minimum_royalty_applied),
+            "scale_source_franchise_id": result.scale_source_franchise_id,
+            "scale_source_franchise_name": result.scale_source_franchise_name or "",
+            "warnings": result.warnings,
+            "blocking_errors": result.blocking_errors,
+        },
     })
-
-    if is_main:
-        snapshot.royalty_method = result.method
-        snapshot.method_source = f"group_main:{result.method_source}"
-        snapshot.royalty_base = row.gross_turnover
-        snapshot.royalty_percentage = row.royalty_percentage
-        snapshot.royalty_amount = row.royalty_amount
-        snapshot.minimum_royalty_amount = result.minimum_royalty_amount
-        snapshot.minimum_royalty_applied = row.minimum_royalty_applied
-        snapshot.scale_source_franchise_id = result.scale_source_franchise_id
-        snapshot.scale_source_franchise_name = result.scale_source_franchise_name or ""
-        snapshot.status = "needs_review" if result.blocking_errors else "calculated"
-        diagnostics["warnings"] = result.warnings
-        diagnostics["blocking_errors"] = result.blocking_errors
-    else:
-        snapshot.method_source = f"grouped_under:{main.id}"
-        snapshot.royalty_percentage = Decimal("0")
-        snapshot.royalty_amount = Decimal("0")
-        snapshot.minimum_royalty_amount = Decimal("0")
-        snapshot.minimum_royalty_applied = False
-        snapshot.scale_source_franchise_id = main.id
-        snapshot.scale_source_franchise_name = main.business_name or ""
-        snapshot.status = "needs_review" if result.blocking_errors else "calculated"
-        diagnostics["warnings"] = [f"Royalty billed under main franchise: {main.business_name}."]
-        diagnostics["blocking_errors"] = result.blocking_errors
     snapshot.diagnostics_json = json.dumps(diagnostics, default=str)
 
 
 def apply_grouped_royalties_for_period(month, year, touched_franchise_ids=None):
-    """Roll linked franchise rows into the primary franchise for royalty billing.
+    """Calculate a separate grouped summary for each franchise-user group.
 
     Franchise grouping is controlled by user_franchises.is_primary.  The primary
     linked franchise is the main Business Name, and its royalty method/scale are
     used for the combined monthly figures of every linked branch in that group.
+    Individual monthly rows remain calculated with their own franchise data and
+    scale; the combined result is never persisted into the main branch row.
     """
     from app.royalty_engine import calculate_monthly_figure
 
@@ -199,14 +193,6 @@ def apply_grouped_royalties_for_period(month, year, touched_franchise_ids=None):
         if not rows:
             continue
 
-        rows_by_franchise = {row.franchise_id: row for row in rows}
-        main_row = rows_by_franchise.get(main.id)
-        if not main_row:
-            main_row = MonthlyFigure(franchise_id=main.id, month=month, year=year, status="Published")
-            db.session.add(main_row)
-            rows.append(main_row)
-            rows_by_franchise[main.id] = main_row
-
         grouped_row = SimpleNamespace(
             franchise=main,
             franchise_id=main.id,
@@ -218,28 +204,9 @@ def apply_grouped_royalties_for_period(month, year, touched_franchise_ids=None):
         for field in SUM_COUNT_FIELDS:
             setattr(grouped_row, field, _count_total(rows, field))
         grouped_row.number_of_funerals = int(getattr(grouped_row, "mf_files", 0) or getattr(grouped_row, "number_of_funerals", 0) or 0)
-        main_row.status = "Published" if main_row.status in {"Draft", "Imported", "Calculated"} else main_row.status
-        _append_note(main_row, "Grouped royalty total: linked branches calculated under this main franchise user.")
-
         result = calculate_monthly_figure(grouped_row)
-        main_row.gross_turnover = grouped_row.gross_turnover
-        main_row.gross_revenue = grouped_row.gross_revenue
-        main_row.gross_method = grouped_row.gross_method
-        main_row.royalty_percentage = grouped_row.royalty_percentage
-        main_row.royalty_amount = grouped_row.royalty_amount
-        main_row.minimum_royalty_applied = grouped_row.minimum_royalty_applied
-        main_row.royalty_review = result
-        _sync_grouped_snapshot(main_row, main, result, is_main=True)
         grouped += 1
-        updated += 1
-
         for row in rows:
-            if row.franchise_id == main.id:
-                continue
-            row.royalty_percentage = Decimal("0")
-            row.royalty_amount = Decimal("0")
-            row.minimum_royalty_applied = False
-            _append_note(row, f"Royalty grouped under main franchise: {main.business_name}.")
-            _sync_grouped_snapshot(row, main, result, is_main=False)
+            _sync_grouped_snapshot(row, main, result, is_main=row.franchise_id == main.id)
             updated += 1
     return {"groups": grouped, "rows": updated}

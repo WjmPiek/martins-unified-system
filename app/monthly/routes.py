@@ -238,9 +238,7 @@ def build_grouped_monthly_totals(figures, main_franchise, selected_month, select
     grouped.royalty_amount = royalty_amount
     grouped.minimum_royalty_applied = minimum_applied
     for item in figures:
-        item.grouped_royalty_main_name = main_franchise.business_name
-        item.grouped_royalty_percentage = percentage
-        item.grouped_royalty_amount = royalty_amount
+        item.included_in_group_main_name = main_franchise.business_name
     return grouped
 
 def get_primary_franchise_for_user(user, linked_franchises):

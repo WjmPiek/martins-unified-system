@@ -90,9 +90,6 @@ def run_month_end_import_pipeline(
         report['stage'] = 'validation_failed'
         report['errors'].append('No franchise rows were imported from the workbook.')
 
-    franchises = Franchise.query.filter(Franchise.id.in_(ids)).order_by(Franchise.business_name).all() if ids else []
-    report['matched_franchises'] = len(franchises)
-
     # Franchise validation.  Missing agreement/scale can change royalty totals and
     # therefore blocks trusted publishing.  Missing login is a warning only: Admin
     # and Finance must still see the imported figures immediately, while the
@@ -100,33 +97,27 @@ def run_month_end_import_pipeline(
     blocking_validation_count = 0
     validation_month = periods[0][0] if periods else None
     validation_year = periods[0][1] if periods else None
-    # Linked branches are billed using their Franchise User group's explicit
-    # main franchise agreement and scale. Validate that billing source once,
-    # instead of incorrectly requiring a separate scale on every linked branch.
+    # Every linked branch keeps its own royalty calculation. The main franchise
+    # scale is used only for the separate combined group summary.
     from app.grouped_royalties import grouped_franchise_sets
-    billing_franchise_by_id = {}
     affected_franchise_ids = set(ids)
     for group in (grouped_franchise_sets(ids) if ids else []):
         for linked_franchise in group["linked"]:
-            billing_franchise_by_id[linked_franchise.id] = group["main"]
             affected_franchise_ids.add(linked_franchise.id)
     report['calculation_franchise_count'] = len(affected_franchise_ids)
+    franchises = Franchise.query.filter(Franchise.id.in_(affected_franchise_ids)).order_by(Franchise.business_name).all() if affected_franchise_ids else []
+    report['matched_franchises'] = len(franchises)
 
-    validated_billing_ids = set()
     for franchise in franchises:
-        billing_franchise = billing_franchise_by_id.get(franchise.id, franchise)
-        if billing_franchise.id in validated_billing_ids:
-            continue
-        validated_billing_ids.add(billing_franchise.id)
-        validation = _franchise_warning(billing_franchise, month=validation_month, year=validation_year)
+        validation = _franchise_warning(franchise, month=validation_month, year=validation_year)
         warnings = list(validation.get('warnings') or [])
         blocking = list(validation.get('blocking_errors') or [])
         if warnings or blocking:
             if blocking:
                 blocking_validation_count += 1
             report['warnings'].append({
-                'franchise_id': billing_franchise.id,
-                'franchise': billing_franchise.business_name,
+                'franchise_id': franchise.id,
+                'franchise': franchise.business_name,
                 'warnings': warnings,
                 'blocking_errors': blocking,
                 'blocking': bool(blocking),
@@ -183,11 +174,7 @@ def run_month_end_import_pipeline(
         report['recalculated_rows'] += 1
         if Decimal(monthly_figure.royalty_amount or 0) > 0 or Decimal(monthly_figure.royalty_percentage or 0) > 0:
             report['royalties_calculated'] += 1
-        billing_franchise = billing_franchise_by_id.get(monthly_figure.franchise_id)
-        grouped_secondary = bool(
-            billing_franchise and billing_franchise.id != monthly_figure.franchise_id
-        )
-        if result and (result.warnings or result.blocking_errors) and not grouped_secondary:
+        if result and (result.warnings or result.blocking_errors):
             report['royalty_engine_reviews'].append(result.to_dict())
             if result.blocking_errors:
                 report['status'] = 'needs_review'
@@ -203,9 +190,8 @@ def run_month_end_import_pipeline(
                     'groups': grouped_result.get('groups', 0),
                     'rows': grouped_result.get('rows', 0),
                 })
-        # apply_grouped_royalties_for_period also synchronizes the existing
-        # snapshots. Re-running snapshot_monthly_figure here would recalculate
-        # each branch separately and overwrite the correct grouped result.
+        # The grouped result is stored only as snapshot diagnostics; the normal
+        # snapshot values above remain the franchise's own royalty calculation.
     except Exception as grouped_exc:
         current_app.logger.exception('Grouped royalty calculation failed: %s', grouped_exc)
         report['status'] = 'needs_review'
@@ -216,8 +202,6 @@ def run_month_end_import_pipeline(
     _stage(progress_job, 86, 'Stage 4/6: checking royalty exceptions...')
     zero_royalty_rows = []
     for monthly_figure in rows:
-        if "Royalty grouped under main franchise:" in (monthly_figure.notes or ""):
-            continue
         if Decimal(monthly_figure.gross_revenue or 0) > 0 and Decimal(monthly_figure.royalty_percentage or 0) <= 0:
             zero_royalty_rows.append({
                 'franchise': monthly_figure.franchise.business_name if monthly_figure.franchise else monthly_figure.franchise_id,

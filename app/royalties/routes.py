@@ -131,10 +131,39 @@ def build_grouped_royalty_row(figures, main_franchise, selected_month, selected_
     grouped.royalty_amount = royalty_amount
     grouped.minimum_royalty_applied = minimum_applied
     for item in figures:
-        item.grouped_royalty_main_name = main_franchise.business_name
-        item.grouped_royalty_percentage = percentage
-        item.grouped_royalty_amount = royalty_amount
+        item.included_in_group_main_name = main_franchise.business_name
     return grouped
+
+
+def build_individual_royalty_row(item):
+    """Return a display row calculated only from this franchise's own data."""
+    values = {
+        column.name: getattr(item, column.name)
+        for column in MonthlyFigure.__table__.columns
+    }
+    row = SimpleNamespace(**values)
+    row.franchise = item.franchise
+    row.period_label = item.period_label
+    row.is_grouped = False
+    row.is_grouped_summary = False
+    row.sales = sum(Decimal(getattr(row, field, 0) or 0) for field in (
+        "funeral_receipts", "society_receipts", "cash_sales",
+        "tombstone_receipts", "obo_service_receipts",
+    ))
+    row.admin_fee = max(
+        Decimal(row.insurance_receipts or 0) - Decimal(row.insurance_payover or 0),
+        Decimal("0"),
+    )
+    row.cash = row.sales + Decimal(row.insurance_receipts or 0)
+    royalty_base, gross_method = calculate_royalty_base(row, row.franchise)
+    row.gross_turnover = royalty_base
+    row.gross_revenue = royalty_base
+    row.gross_method = gross_method
+    _gross, percentage, royalty_amount, minimum_applied = calculate_royalty(row.franchise, royalty_base)
+    row.royalty_percentage = percentage
+    row.royalty_amount = royalty_amount
+    row.minimum_royalty_applied = minimum_applied
+    return row
 
 
 def insert_grouped_summary_rows(figures, selected_month, selected_year):
@@ -144,20 +173,25 @@ def insert_grouped_summary_rows(figures, selected_month, selected_year):
     grouped_by_main = {}
     linked_to_main = {}
     linked_rows_by_main = {}
+    individual_rows_by_franchise = {}
     for group in grouped_franchise_sets(rows_by_franchise.keys()):
         main = group["main"]
         linked = group["linked"]
-        linked_rows = [rows_by_franchise[franchise.id] for franchise in linked if franchise.id in rows_by_franchise]
+        linked_rows = [
+            build_individual_royalty_row(rows_by_franchise[franchise.id])
+            for franchise in linked if franchise.id in rows_by_franchise
+        ]
         if len(linked_rows) < 2 or main.id not in rows_by_franchise:
             continue
         grouped = build_grouped_royalty_row(linked_rows, main, selected_month, selected_year)
         if not grouped:
             continue
+        individual_rows_by_franchise.update({int(row.franchise_id): row for row in linked_rows})
         grouped.is_grouped_summary = True
         grouped.status = "Grouped Total"
         grouped_by_main[int(main.id)] = grouped
         linked_rows_by_main[int(main.id)] = [
-            rows_by_franchise[franchise.id]
+            next(row for row in linked_rows if row.franchise_id == franchise.id)
             for franchise in linked
             if franchise.id != main.id and franchise.id in rows_by_franchise
         ]
@@ -173,12 +207,13 @@ def insert_grouped_summary_rows(figures, selected_month, selected_year):
             continue
         if franchise_id in linked_to_main:
             continue
+        item = individual_rows_by_franchise.get(franchise_id, item)
         output.append(item)
         emitted.add(franchise_id)
         linked_rows = linked_rows_by_main.get(franchise_id, [])
         for linked_item in linked_rows:
             linked_id = int(linked_item.franchise_id)
-            linked_item.grouped_royalty_main_name = item.franchise.business_name if item.franchise else linked_to_main.get(linked_id, "")
+            linked_item.included_in_group_main_name = item.franchise.business_name if item.franchise else linked_to_main.get(linked_id, "")
             output.append(linked_item)
             emitted.add(linked_id)
         grouped = grouped_by_main.get(franchise_id)
@@ -306,8 +341,14 @@ def get_figures():
         # Royalty rows are calculated when figures are imported or deliberately
         # recalculated.  A dashboard visit must never write or recalculate the
         # whole period; that made the overview unusable on a live database.
-        grouped = build_grouped_royalty_row(linked_figures, main_franchise, selected_month, selected_year)
-        figures = [grouped] if grouped else []
+        individual_figures = [build_individual_royalty_row(item) for item in linked_figures]
+        grouped = build_grouped_royalty_row(individual_figures, main_franchise, selected_month, selected_year)
+        if grouped:
+            grouped.is_grouped_summary = True
+            grouped.status = "Grouped Total"
+            figures = [grouped] + individual_figures
+        else:
+            figures = []
         return figures, main_franchise, linked_franchises, False, selected_month, selected_year
 
     query = MonthlyFigure.query.filter(
@@ -336,11 +377,19 @@ def get_figures():
 
 
 def dashboard_totals(figures):
+    grouped_summaries = [item for item in figures if getattr(item, "is_grouped_summary", False)]
+    total_rows = grouped_summaries + [
+        item for item in figures
+        if not getattr(item, "is_grouped_summary", False)
+        and not getattr(item, "included_in_group_main_name", None)
+    ]
+    if not total_rows:
+        total_rows = figures
     return {
-        "total_due": sum(Decimal(item.royalty_amount or 0) for item in figures),
-        "unapproved": len([item for item in figures if item.status not in ["Royalty Approved", "Royalty Locked"]]),
-        "approved": len([item for item in figures if item.status == "Royalty Approved"]),
-        "locked": len([item for item in figures if item.status == "Royalty Locked"]),
+        "total_due": sum(Decimal(item.royalty_amount or 0) for item in total_rows),
+        "unapproved": len([item for item in total_rows if item.status not in ["Royalty Approved", "Royalty Locked"]]),
+        "approved": len([item for item in total_rows if item.status == "Royalty Approved"]),
+        "locked": len([item for item in total_rows if item.status == "Royalty Locked"]),
     }
 
 
