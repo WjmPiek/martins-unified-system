@@ -243,22 +243,20 @@ def franchise(franchise_id):
     growth = request_growth()
     ensure_performance_results(month, year, [franchise_id], mode)
     franchise = Franchise.query.get_or_404(franchise_id)
-    metric_rows = franchise_metric_summary(franchise_id, month, year, mode, growth)
+    dashboard_data = franchise_dashboard(franchise_id, month, year, mode, growth)
     chart_metric = request.args.get("chart_metric", "cash")
     if chart_metric not in PERFORMANCE_METRICS:
         chart_metric = "cash"
     chart_data = trend_series(franchise_id, chart_metric, month, year, 12, mode, growth)
     graph_data = graph_engine_payload(franchise_id, chart_metric, month, year, 12, mode, growth)
-    snapshot = dashboard_snapshot(franchise_id, month, year, mode, growth)
     return render_template(
         "performance/franchise.html",
         franchise=franchise,
-        metric_rows=metric_rows,
+        dashboard=dashboard_data,
         chart_metric=chart_metric,
         chart_data=chart_data,
         graph_data=graph_data,
         metrics=PERFORMANCE_METRICS,
-        snapshot=snapshot,
         target_modes=TARGET_MODES,
         target_mode=mode,
         growth=growth,
