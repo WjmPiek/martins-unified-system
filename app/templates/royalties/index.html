@@ -38,6 +38,14 @@
       <a class="btn button-auto" href="{{ url_for('royalties.export_pdf', month=selected_month, year=selected_year) }}">Export PDF</a>
     {% endif %}
   </div>
+
+  <div class="royalty-dashboard-grid">
+    <div class="metric-card"><span>Total Royalties</span><strong>{{ totals.total_due|rand }}</strong></div>
+    <div class="metric-card"><span>Unapproved</span><strong>{{ totals.unapproved }}</strong></div>
+    <div class="metric-card"><span>Approved</span><strong>{{ totals.approved }}</strong></div>
+    <div class="metric-card"><span>Locked</span><strong>{{ totals.locked }}</strong></div>
+  </div>
+
   <div class="filter-card branch-context-card">
     {% if show_all_franchises %}
       <h2>All Branches</h2>
@@ -184,13 +192,6 @@
     {% endfor %}
   </div>
   {% endif %}
-
-  <div class="royalty-dashboard-grid">
-    <div class="metric-card"><span>Total Royalties</span><strong>{{ totals.total_due|rand }}</strong></div>
-    <div class="metric-card"><span>Unapproved</span><strong>{{ totals.unapproved }}</strong></div>
-    <div class="metric-card"><span>Approved</span><strong>{{ totals.approved }}</strong></div>
-    <div class="metric-card"><span>Locked</span><strong>{{ totals.locked }}</strong></div>
-  </div>
 
   <div class="table-responsive">
     <table class="system-report-table royalties-table">
