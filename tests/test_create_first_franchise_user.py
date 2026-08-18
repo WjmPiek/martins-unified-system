@@ -81,6 +81,7 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details():
         users_html = users_page.get_data(as_text=True)
         assert "yolandi@example.com" in users_html
         assert "Manuals — Compulsory" in users_html
+        assert "Manuals (Compulsory)" not in users_html
 
         activate = client.post(
             f"/admin/franchise-users/{owner.id}/modules",

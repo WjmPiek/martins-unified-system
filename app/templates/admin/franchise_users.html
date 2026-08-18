@@ -21,7 +21,7 @@
           <td>{{ user.email }}</td>
           <td>
             {% set module_state = namespace(labels=[]) %}
-            {% for code, label, description in required_modules %}{% set module_state.labels = module_state.labels + [label ~ ' (Compulsory)'] %}{% endfor %}
+            {% for code, label, description in required_modules %}{% set module_state.labels = module_state.labels + [label] %}{% endfor %}
             {% for code, label, description in optional_modules %}{% if user.has_permission(code) %}{% set module_state.labels = module_state.labels + [label] %}{% endif %}{% endfor %}
             {% if module_state.labels %}{{ module_state.labels|join(', ') }}{% else %}<span class="muted">None</span>{% endif %}
           </td>

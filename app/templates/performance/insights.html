@@ -30,7 +30,7 @@
         <select name="franchise_id">
             <option value="">Group / Head Office</option>
             {% for franchise in franchises %}
-                <option value="{{ franchise.id }}" {% if insights.franchise and insights.franchise.id == franchise.id %}selected{% endif %}>{{ franchise.business_name }}</option>
+                <option value="{{ franchise.id }}" {% if insights['franchise'] and insights['franchise'].id == franchise.id %}selected{% endif %}>{{ franchise.business_name }}</option>
             {% endfor %}
         </select>
     </label>
@@ -40,13 +40,13 @@
 </form>
 
 <div class="insight-grid">
-    <div class="insight-card"><div class="muted">Scope</div><h2>{% if insights.franchise %}{{ insights.franchise.business_name }}{% else %}Group / Head Office{% endif %}</h2></div>
-    <div class="insight-card"><div class="muted">Period</div><h2>{{ insights.period_label }}</h2></div>
-    <div class="insight-card"><div class="muted">Insights</div><h2>{{ insights.items|length }}</h2></div>
+    <div class="insight-card"><div class="muted">Scope</div><h2>{% if insights['franchise'] %}{{ insights['franchise'].business_name }}{% else %}Group / Head Office{% endif %}</h2></div>
+    <div class="insight-card"><div class="muted">Period</div><h2>{{ insights['period_label'] }}</h2></div>
+    <div class="insight-card"><div class="muted">Insights</div><h2>{{ insights['items']|length }}</h2></div>
 </div>
 
 <section>
-    {% for item in insights.items %}
+    {% for item in insights['items'] %}
         <article class="insight-item {{ item.severity }}">
             <span class="insight-badge {{ item.severity }}">{{ item.severity|title }}</span>
             <h3>{{ item.title }}</h3>
