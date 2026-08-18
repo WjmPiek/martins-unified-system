@@ -149,6 +149,45 @@ def role_requires_franchise_scope(role_name):
     return role_name in {"Regional Manager", "Franchise User"}
 
 
+def assign_franchise_user_scope(user, selected_franchises):
+    """Allow royalty-group links while keeping exactly one tenant primary.
+
+    A Franchise User may own a grouped royalty set, so the account can have
+    several rows in user_franchises.  Only the row marked is_primary controls
+    the franchise that the login may view and edit.  Preserve that row when an
+    Admin edits the user; choose the first selected franchise only for legacy
+    accounts that do not yet have a valid primary.
+    """
+    selected_franchises = list(selected_franchises or [])
+    selected_ids = {franchise.id for franchise in selected_franchises}
+    existing_primary_id = None
+    if user.id:
+        existing_primary_id = db.session.execute(
+            db.select(user_franchises.c.franchise_id)
+            .where(user_franchises.c.user_id == user.id)
+            .where(user_franchises.c.is_primary == True)
+            .where(user_franchises.c.franchise_id.in_(selected_ids))
+            .order_by(user_franchises.c.franchise_id.asc())
+            .limit(1)
+        ).scalar()
+
+    user.assigned_franchises = selected_franchises
+    db.session.flush()
+    primary_id = existing_primary_id or selected_franchises[0].id
+    db.session.execute(
+        user_franchises.update()
+        .where(user_franchises.c.user_id == user.id)
+        .values(is_primary=False)
+    )
+    db.session.execute(
+        user_franchises.update()
+        .where(user_franchises.c.user_id == user.id)
+        .where(user_franchises.c.franchise_id == primary_id)
+        .values(is_primary=True)
+    )
+    return primary_id
+
+
 def normalise_user_scope_for_role(user, role_name, franchise_ids=None):
     """Keep admin-side users out of franchise hierarchy and scope franchise roles correctly."""
     user.parent_franchise_user_id = None
@@ -159,22 +198,10 @@ def normalise_user_scope_for_role(user, role_name, franchise_ids=None):
         ).order_by(Franchise.business_name).all()
         if not selected_franchises:
             return False, "Please link at least one active franchise for Regional Manager or Franchise User accounts."
-        user.assigned_franchises = selected_franchises
-        db.session.flush()
         if role_name == "Franchise User":
-            if len(selected_franchises) != 1:
-                return False, "A Franchise User must be linked to exactly one primary franchise."
-            db.session.execute(
-                user_franchises.update()
-                .where(user_franchises.c.user_id == user.id)
-                .values(is_primary=False)
-            )
-            db.session.execute(
-                user_franchises.update()
-                .where(user_franchises.c.user_id == user.id)
-                .where(user_franchises.c.franchise_id == selected_franchises[0].id)
-                .values(is_primary=True)
-            )
+            assign_franchise_user_scope(user, selected_franchises)
+        else:
+            user.assigned_franchises = selected_franchises
         return True, ""
 
     # Finance/Admin-side users are Martins users. Finance Manager is linked to all active franchises.
@@ -751,14 +778,10 @@ def update_user_roles(user_id):
         if not selected_franchises:
             flash("Regional Manager and Franchise User accounts must be linked to at least one franchise.", "danger")
             return redirect(url_for("admin.users"))
-        if "Franchise User" in selected_role_names and len(selected_franchises) != 1:
-            flash("A Franchise User must be linked to exactly one primary franchise.", "danger")
-            return redirect(url_for("admin.users"))
-        user.assigned_franchises = selected_franchises
-        db.session.flush()
         if "Franchise User" in selected_role_names:
-            db.session.execute(user_franchises.update().where(user_franchises.c.user_id == user.id).values(is_primary=False))
-            db.session.execute(user_franchises.update().where(user_franchises.c.user_id == user.id).where(user_franchises.c.franchise_id == selected_franchises[0].id).values(is_primary=True))
+            assign_franchise_user_scope(user, selected_franchises)
+        else:
+            user.assigned_franchises = selected_franchises
     else:
         # Admin > Users is only for Martins users and registered franchise owner/user accounts.
         # Franchise employees are managed separately under Admin > Employees and created by franchise owners.
@@ -835,14 +858,10 @@ def update_user(user_id):
         if not selected_franchises:
             flash("Regional Manager and Franchise User accounts must be linked to at least one franchise.", "danger")
             return redirect(url_for("admin.users"))
-        if "Franchise User" in selected_role_names and len(selected_franchises) != 1:
-            flash("A Franchise User must be linked to exactly one primary franchise.", "danger")
-            return redirect(url_for("admin.users"))
-        user.assigned_franchises = selected_franchises
-        db.session.flush()
         if "Franchise User" in selected_role_names:
-            db.session.execute(user_franchises.update().where(user_franchises.c.user_id == user.id).values(is_primary=False))
-            db.session.execute(user_franchises.update().where(user_franchises.c.user_id == user.id).where(user_franchises.c.franchise_id == selected_franchises[0].id).values(is_primary=True))
+            assign_franchise_user_scope(user, selected_franchises)
+        else:
+            user.assigned_franchises = selected_franchises
     else:
         user.parent_franchise_user_id = None
 

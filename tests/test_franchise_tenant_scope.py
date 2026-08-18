@@ -2,7 +2,11 @@ from flask import g
 from flask_login import login_user, logout_user
 
 from app import create_app
-from app.admin.routes import ensure_own_primary_franchise_link, set_primary_franchise_link
+from app.admin.routes import (
+    ensure_own_primary_franchise_link,
+    normalise_user_scope_for_role,
+    set_primary_franchise_link,
+)
 from app.extensions import db
 from app.franchise.routes import accessible_franchises_for_current_user
 from app.franchise_context import get_accessible_franchises
@@ -75,6 +79,56 @@ def test_royalty_group_does_not_remove_linked_branch_owner():
         assert (main_owner.id, linked.id, False) in links
         assert main_owner.assigned_franchise_id() == main.id
         assert linked_owner.assigned_franchise_id() == linked.id
+
+
+def test_grouped_main_franchise_user_keeps_one_primary_and_can_log_in():
+    app = create_app(TestConfig)
+    with app.app_context():
+        db.create_all()
+        owner_role = Role(name="Franchise User")
+        centurion = Franchise(business_name="Centurion")
+        grouped_branch = Franchise(business_name="Grouped Branch")
+        owner = User(
+            name="Centurion",
+            surname="User",
+            email="centurion@martinsdirect.com",
+            password_hash="x",
+            roles=[owner_role],
+        )
+        owner.set_password("secure-password")
+        db.session.add_all([centurion, grouped_branch, owner])
+        db.session.flush()
+        set_primary_franchise_link(owner, centurion, [centurion, grouped_branch])
+        db.session.commit()
+
+        ok, message = normalise_user_scope_for_role(
+            owner,
+            "Franchise User",
+            [centurion.id, grouped_branch.id],
+        )
+        db.session.commit()
+
+        assert ok is True
+        assert message == ""
+        assert {item.id for item in owner.assigned_franchises} == {centurion.id, grouped_branch.id}
+        primary_links = db.session.execute(
+            db.select(user_franchises.c.franchise_id)
+            .where(user_franchises.c.user_id == owner.id)
+            .where(user_franchises.c.is_primary == True)
+        ).scalars().all()
+        assert primary_links == [centurion.id]
+        assert owner.assigned_franchise_id() == centurion.id
+
+        client = app.test_client()
+        response = client.post(
+            "/login",
+            data={"email": "centurion@martinsdirect.com", "password": "secure-password"},
+        )
+        assert response.status_code == 302
+        with client.session_transaction() as session:
+            assert session.get("_user_id") == str(owner.id)
+            messages = [message for _category, message in session.get("_flashes", [])]
+        assert "A Franchise User must be linked to exactly one primary franchise." not in messages
 
 
 def test_inactive_business_overview_selection_opens_the_same_details_record():
