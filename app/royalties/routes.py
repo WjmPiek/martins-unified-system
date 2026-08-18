@@ -150,9 +150,9 @@ def build_individual_royalty_row(item):
         "funeral_receipts", "society_receipts", "cash_sales",
         "tombstone_receipts", "obo_service_receipts",
     ))
-    row.admin_fee = max(
-        Decimal(row.insurance_receipts or 0) - Decimal(row.insurance_payover or 0),
-        Decimal("0"),
+    row.admin_fee = (
+        Decimal(row.insurance_receipts or 0)
+        - Decimal(row.insurance_payover or 0)
     )
     row.cash = row.sales + Decimal(row.insurance_receipts or 0)
     royalty_base, gross_method = calculate_royalty_base(row, row.franchise)
@@ -370,6 +370,10 @@ def get_figures():
         Franchise.business_name.asc(),
         MonthlyFigure.id.desc(),
     ).all()
+    # Always derive the displayed royalty from the row's source figures.  This
+    # also corrects historical rows whose negative insurance difference was
+    # previously stored as zero, without writing to the database on page load.
+    figures = [build_individual_royalty_row(item) for item in figures]
     if show_all_franchises:
         figures = insert_grouped_summary_rows(figures, selected_month, selected_year)
 

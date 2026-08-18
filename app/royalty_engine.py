@@ -338,9 +338,9 @@ def calculate_monthly_figure(monthly_figure) -> RoyaltyResult:
     )
 
     sales = calculate_sales(monthly_figure)
+    # A payover can legitimately exceed the month's insurance receipts.  Keep
+    # that negative difference so it reduces the new-method royalty base.
     admin_fee = decimal_value(getattr(monthly_figure, "insurance_receipts", 0)) - decimal_value(getattr(monthly_figure, "insurance_payover", 0))
-    if admin_fee < 0:
-        admin_fee = Decimal("0")
     cash = sales + decimal_value(getattr(monthly_figure, "insurance_receipts", 0))
 
     # Keep compatibility fields synchronized.
