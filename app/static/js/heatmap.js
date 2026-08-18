@@ -218,7 +218,7 @@
       applyFilters(fit);
       if (status) {
         status.className = 'alert success';
-        status.textContent = `${state.records.length} Heat Map record(s) loaded for the selected franchise.`;
+        status.textContent = `${state.records.length} map location(s) loaded for the selected franchise. One spreadsheet service row can create separate Deceased, Next of Kin and venue locations.`;
       }
     } catch (error) {
       console.error(error);

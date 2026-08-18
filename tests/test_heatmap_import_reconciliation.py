@@ -91,6 +91,40 @@ def test_wide_import_keeps_distinct_categories_for_same_mf_file():
         assert HeatmapRecord.query.count() == 2
 
 
+def test_deceased_reimport_removes_stale_imports_but_preserves_insurance_and_manual_locations():
+    app = create_app(TestConfig)
+    with app.app_context():
+        db.create_all()
+        franchise = Franchise(business_name="Northcliff (F)")
+        db.session.add(franchise)
+        db.session.flush()
+        current_nok = _record(franchise.id, "MF-801", relation="MAP:next_of_kin")
+        stale_nok = _record(franchise.id, "MF-OLD", relation="MAP:next_of_kin")
+        insurance = _record(franchise.id, "MEM-801", relation="MAP:insurance_clients")
+        manual = _record(franchise.id, "MANUAL-801", relation="MAP:church")
+        current_nok.source_filename = "old-deceased.xlsx"
+        stale_nok.source_filename = "old-deceased.xlsx"
+        insurance.source_filename = "insurance.xlsx"
+        manual.source_filename = ""
+        db.session.add_all([current_nok, stale_nok, insurance, manual])
+        db.session.commit()
+
+        incoming = _record(franchise.id, "MF-801", relation="MAP:next_of_kin", city="Randburg")
+        incoming.source_filename = "current-deceased.xlsx"
+        result = reconcile_heatmap_records([incoming], franchise.id)
+        db.session.commit()
+
+        assert result == (0, 1, 0, 1)
+        identities = {
+            (record.mf_file, record.map_record_type, record.city)
+            for record in HeatmapRecord.query.order_by(HeatmapRecord.id).all()
+        }
+        assert ("MF-801", "next_of_kin", "Randburg") in identities
+        assert not any(item[0] == "MF-OLD" for item in identities)
+        assert any(item[0] == "MEM-801" for item in identities)
+        assert any(item[0] == "MANUAL-801" for item in identities)
+
+
 def test_mem_client_file_is_imported_as_insurance_client():
     app = create_app(TestConfig)
     with app.app_context():

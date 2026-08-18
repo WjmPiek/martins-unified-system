@@ -446,7 +446,12 @@ def merge_heatmap_record(existing, incoming):
 
 
 def reconcile_heatmap_records(records, franchise_id):
-    """Add new records, update matches and remove exact legacy duplicates."""
+    """Synchronize an imported Heat Map snapshot for one franchise.
+
+    Deceased-information and insurance-member workbooks are separate snapshots.
+    Reimporting one removes stale imported locations from that same family while
+    preserving the other family and locations created manually in the UI.
+    """
     existing_records = HeatmapRecord.query.filter_by(franchise_id=franchise_id).all()
     by_identity = {}
     by_mf_file = {}
@@ -469,6 +474,14 @@ def reconcile_heatmap_records(records, franchise_id):
         for record in records
         if clean(record.mf_file)
     )
+    incoming_identities = {heatmap_record_identity(record) for record in records}
+    incoming_types = {record.map_record_type for record in records}
+    if incoming_types and incoming_types <= {"insurance_clients"}:
+        synchronized_types = {"insurance_clients"}
+    else:
+        synchronized_types = {
+            "deceased", "next_of_kin", "church", "cemetery", "crematorium"
+        }
 
     additions = []
     updated = 0
@@ -495,6 +508,20 @@ def reconcile_heatmap_records(records, franchise_id):
             by_identity[identity] = existing
         else:
             unchanged += 1
+
+    # Each template is the current snapshot for its family. Imported locations
+    # absent from the new snapshot are stale. Manual rows have no source file
+    # and are deliberately preserved.
+    for existing in existing_records:
+        if existing in db.session.deleted:
+            continue
+        if not clean(existing.source_filename):
+            continue
+        if existing.map_record_type not in synchronized_types:
+            continue
+        if heatmap_record_identity(existing) not in incoming_identities:
+            db.session.delete(existing)
+            duplicates_removed += 1
 
     if additions:
         db.session.add_all(additions)
@@ -588,13 +615,13 @@ def import_excel():
         if not records:
             flash("No valid heat map rows were found in the uploaded file.", "warning")
             return redirect(url_for("heatmap.index"))
-        added, updated, unchanged, duplicates_removed = reconcile_heatmap_records(records, franchise_id)
+        added, updated, unchanged, removed = reconcile_heatmap_records(records, franchise_id)
         db.session.commit()
         detail = (
             f"Compared {len(records)} heat map records from {filename} for "
             f"{Franchise.query.get(franchise_id).business_name}. "
             f"Added: {added}; updated: {updated}; unchanged: {unchanged}. "
-            f"Existing duplicates removed: {duplicates_removed}. "
+            f"Duplicate or stale imported locations removed: {removed}. "
             f"Skipped non-MEM rows: {skipped_non_mem}; blank rows: {skipped_blank}."
         )
         log_action("Heat Map", "Imported heat map records", detail)
