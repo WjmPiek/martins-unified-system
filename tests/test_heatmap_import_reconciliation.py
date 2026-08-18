@@ -6,7 +6,7 @@ from openpyxl import Workbook
 from app import create_app
 from app.extensions import db
 from app.heatmap.routes import parse_heatmap_excel, reconcile_heatmap_records
-from app.models import Franchise, HeatmapRecord, Permission, Role, User
+from app.models import Franchise, HeatmapRecord, Permission, Role, User, UserModuleAccess, user_franchises
 
 
 class TestConfig:
@@ -184,3 +184,100 @@ def test_heatmap_offers_separate_insurance_and_deceased_downloads():
         assert "martins-deceased-information-heat-map-template.xlsx" in deceased.headers["Content-Disposition"]
         assert insurance.data.startswith(b"PK")
         assert deceased.data.startswith(b"PK")
+
+
+def test_franchise_user_import_is_immediately_visible_in_own_heatmap_data():
+    app = create_app(TestConfig)
+    with app.app_context():
+        db.create_all()
+        permission = Permission(
+            module="Heat Map", action="view", code="heat_map:view", label="View Heat Map"
+        )
+        role = Role(name="Franchise User", permissions=[permission])
+        franchise = Franchise(business_name="Northcliff (F)")
+        owner = User(
+            name="Northcliff", surname="Owner", email="northcliff@example.com",
+            password_hash="x", roles=[role], assigned_franchises=[franchise],
+        )
+        db.session.add_all([franchise, owner])
+        db.session.flush()
+        db.session.execute(
+            user_franchises.update()
+            .where(user_franchises.c.user_id == owner.id)
+            .where(user_franchises.c.franchise_id == franchise.id)
+            .values(is_primary=True)
+        )
+        db.session.add(UserModuleAccess(
+            user_id=owner.id, module_code="heat_map:view", is_enabled=True
+        ))
+        db.session.commit()
+
+        workbook = Workbook()
+        sheet = workbook.active
+        sheet.append(["MF File", "Deceased Name", "Deceased Surname", "DOD", "Address", "City", "Province"])
+        sheet.append(["MF-600", "Person", "Six", "2026-06-01", "1 Main Road", "Northcliff", "Gauteng"])
+        stream = BytesIO()
+        workbook.save(stream)
+        stream.seek(0)
+
+        client = app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(owner.id)
+            session["_fresh"] = True
+
+        response = client.post(
+            "/heat-map/import",
+            data={"franchise_id": str(franchise.id), "file": (stream, "deceased.xlsx")},
+            content_type="multipart/form-data",
+        )
+        assert response.status_code == 302
+        assert f"franchise_id={franchise.id}" in response.headers["Location"]
+        saved = HeatmapRecord.query.one()
+        assert saved.franchise_id == franchise.id
+
+        data_response = client.get(f"/heat-map/data?franchise_id={franchise.id}")
+        assert data_response.status_code == 200
+        payload = data_response.get_json()
+        assert payload["summary"]["total"] == 1
+        assert len(payload["records"]) == 1
+        assert payload["records"][0]["franchiseName"] == "Northcliff (F)"
+
+
+def test_migration_assigns_unscoped_import_to_creator_primary_franchise():
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    from migrations.versions import v125_assign_unscoped_heatmap_records as migration
+
+    app = create_app(TestConfig)
+    with app.app_context():
+        db.create_all()
+        franchise = Franchise(business_name="Northcliff (F)")
+        owner = User(
+            name="Northcliff", surname="Owner", email="owner2@example.com", password_hash="x",
+            assigned_franchises=[franchise],
+        )
+        db.session.add_all([franchise, owner])
+        db.session.flush()
+        db.session.execute(
+            user_franchises.update()
+            .where(user_franchises.c.user_id == owner.id)
+            .where(user_franchises.c.franchise_id == franchise.id)
+            .values(is_primary=True)
+        )
+        record = HeatmapRecord(
+            franchise_id=None,
+            created_by_id=owner.id,
+            mf_file="MF-700",
+            deceased_name="Unscoped",
+            relation="MAP:deceased",
+        )
+        db.session.add(record)
+        db.session.commit()
+        record_id = record.id
+
+        with db.engine.begin() as connection:
+            migration.op = Operations(MigrationContext.configure(connection))
+            migration.upgrade()
+
+        db.session.expire_all()
+        assert db.session.get(HeatmapRecord, record_id).franchise_id == franchise.id

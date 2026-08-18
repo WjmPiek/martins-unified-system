@@ -183,18 +183,37 @@
     const franchiseId = $('heatFranchiseFilter')?.value || '';
     const url = new URL(ctx.dataUrl, window.location.origin);
     if (franchiseId) url.searchParams.set('franchise_id', franchiseId);
+    const status = $('heatDataStatus');
+    if (status) {
+      status.className = 'alert';
+      status.textContent = 'Loading Heat Map records...';
+    }
     try {
-      const res = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+      const res = await fetch(url.toString(), {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin',
+        cache: 'no-store',
+      });
       if (!res.ok) throw new Error(`Heat map data request failed (${res.status})`);
+      const contentType = res.headers.get('content-type') || '';
+      if (!contentType.includes('application/json')) throw new Error('Heat map data request returned an invalid response');
       const data = await res.json();
       state.records = data.records || [];
       applyFilters(fit);
+      if (status) {
+        status.className = 'alert success';
+        status.textContent = `${state.records.length} Heat Map record(s) loaded for the selected franchise.`;
+      }
     } catch (error) {
       console.error(error);
       state.records = [];
       applyFilters(false);
       const body = $('heatRows');
       if (body) body.innerHTML = '<tr><td colspan="8">Heat map data could not be loaded. Refresh the page and try again.</td></tr>';
+      if (status) {
+        status.className = 'alert danger';
+        status.textContent = 'Heat Map records could not be loaded. Please refresh the page or contact Admin.';
+      }
     }
   }
 

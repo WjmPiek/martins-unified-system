@@ -91,6 +91,16 @@ def selected_or_requested_franchise_id():
     return franchise_id
 
 
+def import_target_franchise_id():
+    """Resolve a compulsory, tenant-safe franchise target for an import."""
+    allowed = accessible_franchise_ids()
+    if current_user.is_franchise_scoped_user():
+        # A franchise-side login may never import into a form/session-selected
+        # branch outside its own scope.  Tenant isolation defines the target.
+        return allowed[0] if len(allowed) == 1 else None
+    return selected_or_requested_franchise_id()
+
+
 def scoped_query():
     query = HeatmapRecord.query
     allowed = accessible_franchise_ids()
@@ -494,7 +504,10 @@ def reconcile_heatmap_records(records, franchise_id):
 @permission_required("heat_map:view")
 def index():
     franchises = accessible_franchises()
-    selected = get_selected_franchise() if is_franchise_view_mode() else None
+    requested_id = request.args.get("franchise_id", type=int)
+    selected = next((item for item in franchises if item.id == requested_id), None)
+    if selected is None and is_franchise_view_mode():
+        selected = get_selected_franchise()
     return render_template(
         "heatmap/index.html",
         franchises=franchises,
@@ -535,7 +548,7 @@ def data():
     province_counts = Counter(record.province for record in records if record.province)
     city_counts = Counter(record.city for record in records if record.city)
     mapped = sum(1 for record in records if record.latitude is not None and record.longitude is not None)
-    return jsonify({
+    response = jsonify({
         "records": [record.to_dict() for record in records],
         "summary": {
             "total": len(records),
@@ -545,6 +558,8 @@ def data():
             "cities": dict(city_counts.most_common(10)),
         }
     })
+    response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 @heatmap_bp.route("/import", methods=["POST"])
@@ -557,11 +572,11 @@ def import_excel():
         flash("Please choose an Excel file to import.", "danger")
         return redirect(url_for("heatmap.index"))
     filename = file.filename
-    franchise_id = selected_or_requested_franchise_id()
-    if not franchise_id and accessible_franchise_ids():
-        franchise_id = request.form.get("franchise_id", type=int) or None
-    if franchise_id:
-        enforce_franchise_access(franchise_id)
+    franchise_id = import_target_franchise_id()
+    if not franchise_id:
+        flash("Select an accessible franchise before importing Heat Map data.", "danger")
+        return redirect(url_for("heatmap.index"))
+    enforce_franchise_access(franchise_id)
     try:
         records, skipped_non_mem, skipped_blank = parse_heatmap_excel(file, filename, franchise_id)
         if not records:
@@ -570,7 +585,8 @@ def import_excel():
         added, updated, unchanged, duplicates_removed = reconcile_heatmap_records(records, franchise_id)
         db.session.commit()
         detail = (
-            f"Compared {len(records)} heat map records from {filename}. "
+            f"Compared {len(records)} heat map records from {filename} for "
+            f"{Franchise.query.get(franchise_id).business_name}. "
             f"Added: {added}; updated: {updated}; unchanged: {unchanged}. "
             f"Existing duplicates removed: {duplicates_removed}. "
             f"Skipped non-MEM rows: {skipped_non_mem}; blank rows: {skipped_blank}."
@@ -581,7 +597,7 @@ def import_excel():
         db.session.rollback()
         current_app.logger.exception("Heat map import failed: %s", exc)
         flash(str(exc) or "Heat map import failed.", "danger")
-    return redirect(url_for("heatmap.index"))
+    return redirect(url_for("heatmap.index", franchise_id=franchise_id))
 
 
 @heatmap_bp.route("/record", methods=["POST"])
