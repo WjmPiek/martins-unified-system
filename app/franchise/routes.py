@@ -7,7 +7,7 @@ from flask_login import login_required, current_user
 from werkzeug.utils import secure_filename
 from app.extensions import db
 from app.audit import log_action
-from app.models import Franchise, RoyaltyScale, User, Role, MonthlyFigure, user_franchises
+from app.models import Franchise, RoyaltyScale, User, Role, MonthlyFigure, user_franchises, ensure_mandatory_franchise_modules
 from app.franchise_context import get_accessible_franchises, get_selected_franchise
 
 franchise_bp = Blueprint("franchise", __name__, url_prefix="/franchise")
@@ -260,6 +260,7 @@ def create_franchise_user():
     user.roles.append(role)
     db.session.add_all([franchise, user])
     db.session.flush()
+    ensure_mandatory_franchise_modules(user)
     user.assigned_franchises = [franchise]
     db.session.flush()
     db.session.execute(

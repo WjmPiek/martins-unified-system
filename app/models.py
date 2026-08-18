@@ -26,7 +26,8 @@ user_franchises = db.Table(
     db.Column("is_primary", db.Boolean, default=False, nullable=False),
 )
 
-OPTIONAL_FRANCHISE_MODULES = {"heat_map:view", "attendance:view", "manuals:view"}
+OPTIONAL_FRANCHISE_MODULES = {"heat_map:view", "attendance:view"}
+MANDATORY_FRANCHISE_MODULES = {"manuals:view"}
 
 ADMIN_ROLE_NAMES = {"Admin", "Super Admin"}
 FRANCHISE_SCOPED_ROLE_NAMES = {
@@ -164,10 +165,15 @@ class User(UserMixin, db.Model):
         return any(role.name == role_name for role in self.roles)
 
     def has_permission(self, code):
-        if code in OPTIONAL_FRANCHISE_MODULES and self.is_franchise_scoped_user():
+        # Manuals is compulsory for every owner-level Franchise User.  An old
+        # disabled override must never remove this access.
+        if code in MANDATORY_FRANCHISE_MODULES and self.has_role("Franchise User"):
+            return True
+        # Optional modules are off until Admin explicitly activates them for
+        # this individual Franchise User; do not inherit them from the role.
+        if code in OPTIONAL_FRANCHISE_MODULES and self.has_role("Franchise User"):
             override = next((item for item in self.module_access if item.module_code == code), None)
-            if override is not None:
-                return bool(override.is_enabled)
+            return bool(override and override.is_enabled)
         return any(role.has_permission(code) for role in self.roles)
 
     def get_reset_token(self):
@@ -199,6 +205,22 @@ class UserModuleAccess(db.Model):
 
     user = db.relationship("User", back_populates="module_access")
     __table_args__ = (db.UniqueConstraint("user_id", "module_code", name="uq_user_module_access_user_code"),)
+
+
+def ensure_mandatory_franchise_modules(user):
+    """Persist compulsory module access for a Franchise User account."""
+    if not user or not user.has_role("Franchise User"):
+        return 0
+    changed = 0
+    for code in MANDATORY_FRANCHISE_MODULES:
+        access = next((item for item in user.module_access if item.module_code == code), None)
+        if access is None:
+            db.session.add(UserModuleAccess(user=user, module_code=code, is_enabled=True))
+            changed += 1
+        elif not access.is_enabled:
+            access.is_enabled = True
+            changed += 1
+    return changed
 
 
 class Franchise(db.Model):

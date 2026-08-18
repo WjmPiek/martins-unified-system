@@ -9,7 +9,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from flask_login import login_required, current_user
 from app.extensions import db
 from sqlalchemy import text
-from app.models import User, UserModuleAccess, Role, Permission, AuditLog, Franchise, RoyaltyScale, MonthlyFigure, ImportJob, LiveEvent, LiveNotification, PerformancePageCache, ImportJobLog, WorkerHeartbeat, SystemEvent, EventSubscription, EventProcessingLog, RoyaltyGrowthProfile, RoyaltyAgreementProfile, RoyaltyCalculationSnapshot, RoyaltyOverride, FranchiseHealthSnapshot, BusinessInsight, InsightNarrative, WorkflowDefinition, WorkflowInstance, WorkflowStep, BusinessRule, EnterpriseTask, EnterpriseNotification, ScheduledJobDefinition, EnterpriseAuditTimeline, user_franchises
+from app.models import User, UserModuleAccess, Role, Permission, AuditLog, Franchise, RoyaltyScale, MonthlyFigure, ImportJob, LiveEvent, LiveNotification, PerformancePageCache, ImportJobLog, WorkerHeartbeat, SystemEvent, EventSubscription, EventProcessingLog, RoyaltyGrowthProfile, RoyaltyAgreementProfile, RoyaltyCalculationSnapshot, RoyaltyOverride, FranchiseHealthSnapshot, BusinessInsight, InsightNarrative, WorkflowDefinition, WorkflowInstance, WorkflowStep, BusinessRule, EnterpriseTask, EnterpriseNotification, ScheduledJobDefinition, EnterpriseAuditTimeline, user_franchises, ensure_mandatory_franchise_modules
 from app.franchise_context import set_selected_franchise
 from app.permissions import MODULES, ACTIONS, ROLE_TEMPLATES, ROLE_DEFAULTS, permission_code
 from app.audit import log_action
@@ -28,7 +28,9 @@ FRANCHISE_CREATABLE_ROLE_NAMES = ["Franchise Manager", "Franchise Employee", "Fr
 FRANCHISE_OPTIONAL_MODULES = (
     ("heat_map:view", "Heat Map", "Franchise coverage, density and map categories"),
     ("attendance:view", "Attendance", "Staff attendance workspace"),
-    ("manuals:view", "Manuals", "Published manuals and search"),
+)
+FRANCHISE_REQUIRED_MODULES = (
+    ("manuals:view", "Manuals", "Compulsory for every Franchise User"),
 )
 
 ROLE_HELP_TEXT = {
@@ -355,6 +357,9 @@ def repair_existing_user_visibility():
             ensure_own_primary_franchise_link(owner, franchise)
             changed += 1
 
+    for owner in all_franchise_owner_users():
+        changed += ensure_mandatory_franchise_modules(owner)
+
     if changed:
         db.session.flush()
     return changed
@@ -423,6 +428,9 @@ def get_or_create_user(name, surname, email, role_name, franchises=None, passwor
     role = get_or_create_role(role_name)
     if role not in user.roles:
         user.roles.append(role)
+
+    if role_name == "Franchise User":
+        ensure_mandatory_franchise_modules(user)
 
     if franchises is not None:
         for franchise in franchises:
@@ -589,6 +597,7 @@ def franchise_users():
         franchises=franchises,
         can_assign_franchise_links=can_assign_franchise_links(),
         optional_modules=FRANCHISE_OPTIONAL_MODULES,
+        required_modules=FRANCHISE_REQUIRED_MODULES,
     )
 
 
@@ -609,6 +618,7 @@ def update_franchise_user_modules(user_id):
             db.session.add(access)
         access.is_enabled = code in enabled_codes
 
+    ensure_mandatory_franchise_modules(user)
     db.session.commit()
     enabled_labels = [label for code, label, _description in FRANCHISE_OPTIONAL_MODULES if code in enabled_codes]
     log_action("Users", "Updated franchise user modules", f"User: {user.email}; Modules: {', '.join(enabled_labels) or 'None'}")
@@ -755,6 +765,8 @@ def update_user_roles(user_id):
         user.parent_franchise_user_id = None
 
     user.roles = selected_roles
+    if "Franchise User" in selected_role_names:
+        ensure_mandatory_franchise_modules(user)
     log_action("Users", "Updated user roles and scope", f"User: {user.full_name}")
     db.session.commit()
     flash(f"User and scope updated for {user.full_name}.", "success")
@@ -835,6 +847,8 @@ def update_user(user_id):
         user.parent_franchise_user_id = None
 
     user.roles = selected_roles
+    if "Franchise User" in selected_role_names:
+        ensure_mandatory_franchise_modules(user)
     log_action("Users", "Updated user details", f"User: {user.full_name}; Email: {user.email}")
     db.session.commit()
     flash(f"User updated for {user.full_name}.", "success")
@@ -1285,6 +1299,7 @@ def find_franchise_user_for_main_franchise(main_franchise, create_missing=True):
         role = get_or_create_role("Franchise User")
         if role not in user.roles:
             user.roles.append(role)
+        ensure_mandatory_franchise_modules(user)
         return user, False
 
     for contact_email in (
@@ -1298,6 +1313,7 @@ def find_franchise_user_for_main_franchise(main_franchise, create_missing=True):
             role = get_or_create_role("Franchise User")
             if role not in user.roles:
                 user.roles.append(role)
+            ensure_mandatory_franchise_modules(user)
             return user, False
 
     normalized_main = normalize_franchise_key(main_franchise.business_name)
@@ -3594,6 +3610,7 @@ def edit_franchise_master_record(franchise_id):
                 linked_user.set_password("ChangeMe!2026")
                 linked_user.roles.append(role)
                 db.session.add(linked_user); db.session.flush()
+                ensure_mandatory_franchise_modules(linked_user)
                 linked_user.assigned_franchises.append(franchise)
                 db.session.flush()
             db.session.execute(user_franchises.update().where(

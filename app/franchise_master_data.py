@@ -19,7 +19,7 @@ from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.utils import get_column_letter
 
 from app import db
-from app.models import Franchise, MonthlyFigure, RoyaltyCalculationSnapshot, RoyaltyScale, User, user_franchises
+from app.models import Franchise, MonthlyFigure, RoyaltyCalculationSnapshot, RoyaltyScale, User, user_franchises, ensure_mandatory_franchise_modules
 
 PROVINCES = [
     "Eastern Cape", "Free State", "Gauteng", "KwaZulu-Natal", "Limpopo",
@@ -702,6 +702,7 @@ def _ensure_franchise_user_link(franchise: Franchise, row: Dict[str, Any]) -> Tu
             db.session.flush()
         if role not in user.roles:
             user.roles.append(role)
+        ensure_mandatory_franchise_modules(user)
     except Exception:
         pass
     linked = 0

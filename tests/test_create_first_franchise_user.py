@@ -2,7 +2,7 @@ from flask import g
 
 from app import create_app
 from app.extensions import db
-from app.models import Franchise, Role, User, user_franchises
+from app.models import Franchise, Role, User, UserModuleAccess, user_franchises
 
 
 class TestConfig:
@@ -54,6 +54,12 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details():
 
         franchise = Franchise.query.filter_by(business_name="Panorama").one()
         owner = User.query.filter_by(email="yolandi@example.com").one()
+        manual_access = UserModuleAccess.query.filter_by(
+            user_id=owner.id, module_code="manuals:view"
+        ).one()
+        assert manual_access.is_enabled is True
+        assert owner.has_permission("manuals:view") is True
+        assert owner.has_permission("heat_map:view") is False
         assert owner.assigned_franchise_id() == franchise.id
         assert owner.can_access_franchise(franchise.id)
         link = db.session.execute(
@@ -72,4 +78,26 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details():
         g.pop("accessible_franchises_cache", None)
         users_page = client.get("/admin/franchise-users")
         assert users_page.status_code == 200
-        assert "yolandi@example.com" in users_page.get_data(as_text=True)
+        users_html = users_page.get_data(as_text=True)
+        assert "yolandi@example.com" in users_html
+        assert "Manuals — Compulsory" in users_html
+
+        activate = client.post(
+            f"/admin/franchise-users/{owner.id}/modules",
+            data={"module_codes": "heat_map:view"},
+        )
+        assert activate.status_code == 302
+        db.session.expire_all()
+        owner = db.session.get(User, owner.id)
+        assert owner.has_permission("manuals:view") is True
+        assert owner.has_permission("heat_map:view") is True
+
+        deactivate_optional = client.post(
+            f"/admin/franchise-users/{owner.id}/modules",
+            data={},
+        )
+        assert deactivate_optional.status_code == 302
+        db.session.expire_all()
+        owner = db.session.get(User, owner.id)
+        assert owner.has_permission("manuals:view") is True
+        assert owner.has_permission("heat_map:view") is False
