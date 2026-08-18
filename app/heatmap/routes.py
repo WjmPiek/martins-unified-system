@@ -544,6 +544,7 @@ def index():
         provinces=PROVINCES,
         can_modify_heatmap=can_modify_heatmap(),
         can_import_heatmap=can_import_heatmap(),
+        can_geocode_heatmap=can_modify_heatmap() or can_import_heatmap(),
         record_types=HEATMAP_RECORD_TYPES,
         google_maps_api_key=current_app.config.get("GOOGLE_MAPS_API_KEY", ""),
     )
@@ -669,6 +670,41 @@ def save_record():
     db.session.commit()
     log_action("Heat Map", "Saved heat map record", record.mf_file or record.full_address or str(record.id))
     return jsonify({"record": record.to_dict()})
+
+
+@heatmap_bp.route("/coordinates", methods=["POST"])
+@login_required
+def save_coordinates():
+    """Save one geocoded address against all matching accessible records."""
+    if not (can_modify_heatmap() or can_import_heatmap()):
+        abort(403)
+    payload = request.get_json(force=True) or {}
+    raw_ids = payload.get("recordIds") or []
+    try:
+        record_ids = list(dict.fromkeys(int(value) for value in raw_ids))[:500]
+    except (TypeError, ValueError):
+        abort(400)
+    latitude = number(payload.get("latitude"))
+    longitude = number(payload.get("longitude"))
+    if (
+        not record_ids or latitude is None or longitude is None
+        or not -90 <= latitude <= 90 or not -180 <= longitude <= 180
+    ):
+        abort(400)
+
+    records = HeatmapRecord.query.filter(HeatmapRecord.id.in_(record_ids)).all()
+    if len(records) != len(record_ids):
+        abort(404)
+    for record in records:
+        enforce_franchise_access(record.franchise_id)
+        record.latitude = latitude
+        record.longitude = longitude
+    db.session.commit()
+    log_action(
+        "Heat Map", "Geocoded heat map address",
+        f"Updated {len(records)} location(s) at {records[0].full_address or records[0].address}",
+    )
+    return jsonify({"updated": len(records), "latitude": latitude, "longitude": longitude})
 
 
 @heatmap_bp.route("/record/<int:record_id>/delete", methods=["POST"])

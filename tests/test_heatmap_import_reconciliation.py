@@ -1,4 +1,5 @@
 from io import BytesIO
+from pathlib import Path
 
 from flask_login import login_user, logout_user
 from openpyxl import Workbook
@@ -219,6 +220,14 @@ def test_heatmap_offers_separate_insurance_and_deceased_downloads():
         assert insurance.data.startswith(b"PK")
         assert deceased.data.startswith(b"PK")
 
+        javascript = (Path(app.static_folder) / "js" / "heatmap.js").read_text(encoding="utf-8")
+        assert "google.maps.visualization.HeatmapLayer" not in javascript
+        assert "new google.maps.Circle" in javascript
+        assert "groupVenueRecords(mapped)" in javascript
+        assert "Total services:" in javascript
+        assert "startAutomaticGeocoding" in javascript
+        assert "libraries=visualization" not in html
+
 
 def test_franchise_user_import_is_immediately_visible_in_own_heatmap_data():
     app = create_app(TestConfig)
@@ -354,3 +363,55 @@ def test_heatmap_data_rejects_non_finite_numbers_and_serializes_legacy_values():
         assert payload["records"][0]["latitude"] is None
         assert payload["records"][0]["longitude"] is None
         assert payload["records"][0]["weight"] == 1
+
+
+def test_franchise_user_can_save_automatic_coordinates_for_own_records_only():
+    app = create_app(TestConfig)
+    with app.app_context():
+        db.create_all()
+        permission = Permission(
+            module="Heat Map", action="view", code="heat_map:view", label="View Heat Map"
+        )
+        role = Role(name="Franchise User", permissions=[permission])
+        own_franchise = Franchise(business_name="Northcliff (F)")
+        other_franchise = Franchise(business_name="Other")
+        owner = User(
+            name="Northcliff", surname="Owner", email="coordinates@example.com",
+            password_hash="x", roles=[role], assigned_franchises=[own_franchise],
+        )
+        own_record = HeatmapRecord(
+            franchise=own_franchise, mf_file="MF-GEO-1", full_address="1 Main Road, Northcliff"
+        )
+        other_record = HeatmapRecord(
+            franchise=other_franchise, mf_file="MF-GEO-2", full_address="2 Main Road, Other"
+        )
+        db.session.add_all([owner, other_franchise, own_record, other_record])
+        db.session.flush()
+        db.session.execute(
+            user_franchises.update()
+            .where(user_franchises.c.user_id == owner.id)
+            .where(user_franchises.c.franchise_id == own_franchise.id)
+            .values(is_primary=True)
+        )
+        db.session.add(UserModuleAccess(
+            user_id=owner.id, module_code="heat_map:view", is_enabled=True
+        ))
+        db.session.commit()
+
+        client = app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(owner.id)
+            session["_fresh"] = True
+
+        response = client.post("/heat-map/coordinates", json={
+            "recordIds": [own_record.id], "latitude": -26.14, "longitude": 27.98,
+        })
+        assert response.status_code == 200
+        db.session.refresh(own_record)
+        assert own_record.latitude == -26.14
+        assert own_record.longitude == 27.98
+
+        forbidden = client.post("/heat-map/coordinates", json={
+            "recordIds": [other_record.id], "latitude": -26.20, "longitude": 28.05,
+        })
+        assert forbidden.status_code == 403
