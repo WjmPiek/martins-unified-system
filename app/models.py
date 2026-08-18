@@ -609,6 +609,10 @@ class HeatmapRecord(db.Model):
     def map_record_type(self):
         """Read category markers from the existing relation field."""
         relation = (self.relation or "").strip().lower()
+        # Legacy client imports used Relation=MEM before map categories were
+        # introduced.  These rows are insurance clients, not deceased records.
+        if relation == "mem":
+            return "insurance_clients"
         if relation.startswith("map:"):
             value = relation.split(":", 1)[1].strip().replace("-", "_").replace(" ", "_")
             if value in {"deceased", "next_of_kin", "church", "cemetery", "crematorium", "insurance_clients"}:

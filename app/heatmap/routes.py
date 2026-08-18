@@ -24,6 +24,17 @@ HEATMAP_RECORD_TYPES = {
     "crematorium": "Crematorium", "insurance_clients": "Insurance Clients",
 }
 
+HEATMAP_TEMPLATE_FILES = {
+    "insurance-members": (
+        "insurance_members_heatmap_template.xlsx",
+        "martins-insurance-members-heat-map-template.xlsx",
+    ),
+    "deceased-information": (
+        "deceased_information_heatmap_template.xlsx",
+        "martins-deceased-information-heat-map-template.xlsx",
+    ),
+}
+
 
 def normalize_record_type(value):
     key = clean(value).lower().replace("-", "_").replace(" ", "_")
@@ -340,6 +351,8 @@ def parse_heatmap_excel(file_storage, source_filename, franchise_id):
         if has_relation_column and relation.upper() != "MEM":
             skipped_non_mem += 1
             continue
+        if has_relation_column and relation.upper() == "MEM" and not explicit_record_type:
+            record_type = "insurance_clients"
         if not any([
             mf_file, deceased_name, deceased_surname, next_of_kin_name,
             next_of_kin_surname, address, city, province, full_address,
@@ -364,7 +377,7 @@ def parse_heatmap_excel(file_storage, source_filename, franchise_id):
             next_of_kin_name=next_of_kin_name,
             next_of_kin_surname=next_of_kin_surname,
             relationship=clean(cell(ws, row, headers, "relationship")),
-            relation=f"MAP:{record_type}" if explicit_record_type else relation,
+            relation=f"MAP:{record_type}" if explicit_record_type or relation.upper() == "MEM" else relation,
             contact_number=clean(cell(ws, row, headers, "contact number", "cell number", "phone")),
             source_filename=source_filename,
             created_by_id=current_user.id,
@@ -421,11 +434,29 @@ def merge_heatmap_record(existing, incoming):
 
 
 def reconcile_heatmap_records(records, franchise_id):
-    """Add new records, update matches and leave all unrelated existing data intact."""
+    """Add new records, update matches and remove exact legacy duplicates."""
     existing_records = HeatmapRecord.query.filter_by(franchise_id=franchise_id).all()
     by_identity = {}
+    by_mf_file = {}
+    duplicates_removed = 0
     for existing in existing_records:
-        by_identity.setdefault(heatmap_record_identity(existing), existing)
+        identity = heatmap_record_identity(existing)
+        canonical = by_identity.get(identity)
+        if canonical is not None:
+            merge_heatmap_record(canonical, existing)
+            db.session.delete(existing)
+            duplicates_removed += 1
+            continue
+        by_identity[identity] = existing
+        mf_file = clean(existing.mf_file).casefold()
+        if mf_file:
+            by_mf_file.setdefault(mf_file, []).append(existing)
+
+    incoming_mf_counts = Counter(
+        clean(record.mf_file).casefold()
+        for record in records
+        if clean(record.mf_file)
+    )
 
     additions = []
     updated = 0
@@ -433,17 +464,29 @@ def reconcile_heatmap_records(records, franchise_id):
     for incoming in records:
         identity = heatmap_record_identity(incoming)
         existing = by_identity.get(identity)
+        mf_file = clean(incoming.mf_file).casefold()
+        # A narrow client file contains one row/category per MF File.  If a
+        # legacy row has the same MF File but an old category marker, update it
+        # instead of creating a second client.  Wide density files legitimately
+        # contain several categories per MF File and therefore use exact keys.
+        if existing is None and mf_file and incoming_mf_counts[mf_file] == 1:
+            candidates = by_mf_file.get(mf_file, [])
+            if len(candidates) == 1:
+                existing = candidates[0]
         if existing is None:
             additions.append(incoming)
             by_identity[identity] = incoming
+            if mf_file:
+                by_mf_file.setdefault(mf_file, []).append(incoming)
         elif merge_heatmap_record(existing, incoming):
             updated += 1
+            by_identity[identity] = existing
         else:
             unchanged += 1
 
     if additions:
         db.session.add_all(additions)
-    return len(additions), updated, unchanged
+    return len(additions), updated, unchanged, duplicates_removed
 
 
 @heatmap_bp.route("/")
@@ -465,16 +508,21 @@ def index():
 
 
 @heatmap_bp.route("/template")
+@heatmap_bp.route("/template/<template_type>")
 @login_required
 @permission_required("heat_map:view")
-def download_template():
-    template_path = Path(current_app.static_folder) / "templates" / "heatmap_import_template.xlsx"
+def download_template(template_type="deceased-information"):
+    template_file = HEATMAP_TEMPLATE_FILES.get(template_type)
+    if not template_file:
+        abort(404)
+    stored_name, download_name = template_file
+    template_path = Path(current_app.static_folder) / "templates" / stored_name
     if not template_path.is_file():
         abort(404)
     return send_file(
         template_path,
         as_attachment=True,
-        download_name="martins-heat-map-import-template.xlsx",
+        download_name=download_name,
         mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     )
 
@@ -519,11 +567,12 @@ def import_excel():
         if not records:
             flash("No valid heat map rows were found in the uploaded file.", "warning")
             return redirect(url_for("heatmap.index"))
-        added, updated, unchanged = reconcile_heatmap_records(records, franchise_id)
+        added, updated, unchanged, duplicates_removed = reconcile_heatmap_records(records, franchise_id)
         db.session.commit()
         detail = (
             f"Compared {len(records)} heat map records from {filename}. "
-            f"Added: {added}; updated: {updated}; unchanged/duplicates: {unchanged}. "
+            f"Added: {added}; updated: {updated}; unchanged: {unchanged}. "
+            f"Existing duplicates removed: {duplicates_removed}. "
             f"Skipped non-MEM rows: {skipped_non_mem}; blank rows: {skipped_blank}."
         )
         log_action("Heat Map", "Imported heat map records", detail)

@@ -63,13 +63,17 @@
     </div>
 
     <hr>
-    <h2>Excel Template</h2>
-    <p class="muted">Download the Heat Map template, add your own records, then import the completed file below.</p>
-    <a class="btn secondary button-auto" href="{{ url_for('heatmap.download_template') }}">Download Heat Map Template</a>
+    <h2>Excel Templates</h2>
+    <p class="muted">Download the correct file for the information you are importing. Insurance members and deceased information must use separate files.</p>
+    <div class="button-row">
+      <a class="btn secondary button-auto" href="{{ url_for('heatmap.download_template', template_type='insurance-members') }}">Download Insurance Members File</a>
+      <a class="btn secondary button-auto" href="{{ url_for('heatmap.download_template', template_type='deceased-information') }}">Download Deceased Information File</a>
+    </div>
 
     {% if can_import_heatmap %}
     <hr>
     <h2>Import Excel</h2>
+    <p class="muted">Import one completed Insurance Members or Deceased Information file at a time.</p>
     <form method="post" action="{{ url_for('heatmap.import_excel') }}" enctype="multipart/form-data">
       <label for="heatImportFranchise">Import to franchise</label>
       <select id="heatImportFranchise" name="franchise_id" required>
@@ -124,7 +128,7 @@ window.HEATMAP_CONTEXT = {
   canModify: {{ 'true' if can_modify_heatmap else 'false' }}
 };
 </script>
-<script src="{{ url_for('static', filename='js/heatmap.js') }}"></script>
+<script src="{{ asset_url('js/heatmap.js') }}"></script>
 {% if google_maps_api_key %}
 <script async defer src="https://maps.googleapis.com/maps/api/js?key={{ google_maps_api_key }}&libraries=visualization&callback=initMartinsHeatMap"></script>
 {% endif %}

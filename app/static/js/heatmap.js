@@ -27,12 +27,14 @@
 
   function filteredRecords() {
     const town = ($('heatTownFilter')?.value || '').trim().toLowerCase();
-    const province = $('heatProvinceFilter')?.value || '';
-    const recordType = $('heatRecordTypeFilter')?.value || '';
+    const province = String($('heatProvinceFilter')?.value || '').trim().toLowerCase();
+    const recordType = String($('heatRecordTypeFilter')?.value || '').trim().toLowerCase();
     state.filtered = state.records.filter(r => {
-      return (!town || String(r.city || '').toLowerCase().includes(town) || String(fullAddress(r)).toLowerCase().includes(town)) &&
-             (!province || r.province === province) &&
-             (!recordType || (r.recordType || 'deceased') === recordType);
+      const searchable = [r.city, fullAddress(r), recordName(r), r.mfFile, r.contactNumber]
+        .map(value => String(value || '').toLowerCase()).join(' ');
+      return (!town || searchable.includes(town)) &&
+             (!province || String(r.province || '').trim().toLowerCase() === province) &&
+             (!recordType || String(r.recordType || 'deceased').trim().toLowerCase() === recordType);
     });
     return state.filtered;
   }
@@ -181,10 +183,19 @@
     const franchiseId = $('heatFranchiseFilter')?.value || '';
     const url = new URL(ctx.dataUrl, window.location.origin);
     if (franchiseId) url.searchParams.set('franchise_id', franchiseId);
-    const res = await fetch(url.toString());
-    const data = await res.json();
-    state.records = data.records || [];
-    applyFilters(fit);
+    try {
+      const res = await fetch(url.toString(), { headers: { 'Accept': 'application/json' } });
+      if (!res.ok) throw new Error(`Heat map data request failed (${res.status})`);
+      const data = await res.json();
+      state.records = data.records || [];
+      applyFilters(fit);
+    } catch (error) {
+      console.error(error);
+      state.records = [];
+      applyFilters(false);
+      const body = $('heatRows');
+      if (body) body.innerHTML = '<tr><td colspan="8">Heat map data could not be loaded. Refresh the page and try again.</td></tr>';
+    }
   }
 
   async function geocodeMissing() {
@@ -225,7 +236,9 @@
   };
 
   document.addEventListener('DOMContentLoaded', function () {
-    ['heatTownFilter', 'heatProvinceFilter', 'heatRadius', 'heatRecordTypeFilter'].forEach(id => $(id)?.addEventListener('input', () => applyFilters(false)));
+    $('heatTownFilter')?.addEventListener('input', () => applyFilters(false));
+    ['heatProvinceFilter', 'heatRecordTypeFilter'].forEach(id => $(id)?.addEventListener('change', () => applyFilters(false)));
+    $('heatRadius')?.addEventListener('input', () => renderMap(false));
     $('heatFranchiseFilter')?.addEventListener('change', () => loadData(true));
     $('heatFitBoundsBtn')?.addEventListener('click', () => renderMap(true));
     $('heatGeocodeBtn')?.addEventListener('click', geocodeMissing);
@@ -239,5 +252,8 @@
       const btn = event.target.closest('[data-delete]');
       if (btn) deleteRecord(btn.dataset.delete);
     });
+    // Records and filters must work even if Google Maps is unavailable or its
+    // external script is slow. The Maps callback will fit/reload once ready.
+    loadData(false);
   });
 })();
