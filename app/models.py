@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import json
+import math
 from flask_login import UserMixin
 from werkzeug.security import generate_password_hash, check_password_hash
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
@@ -620,6 +621,24 @@ class HeatmapRecord(db.Model):
         return "deceased"
 
     def to_dict(self):
+        def json_number(value, *, minimum=None, maximum=None):
+            """Return only browser-safe finite numbers from legacy/imported data."""
+            if value is None:
+                return None
+            try:
+                parsed = float(value)
+            except (TypeError, ValueError):
+                return None
+            if not math.isfinite(parsed):
+                return None
+            if minimum is not None and parsed < minimum:
+                return None
+            if maximum is not None and parsed > maximum:
+                return None
+            return parsed
+
+        safe_weight = json_number(self.weight)
+
         return {
             "id": self.id,
             "franchiseId": self.franchise_id,
@@ -633,9 +652,9 @@ class HeatmapRecord(db.Model):
             "province": self.province or "",
             "country": self.country or "South Africa",
             "fullAddress": self.full_address or "",
-            "latitude": self.latitude,
-            "longitude": self.longitude,
-            "weight": self.weight if self.weight is not None else 1,
+            "latitude": json_number(self.latitude, minimum=-90, maximum=90),
+            "longitude": json_number(self.longitude, minimum=-180, maximum=180),
+            "weight": safe_weight if safe_weight is not None else 1,
             "nextOfKinName": self.next_of_kin_name or "",
             "nextOfKinSurname": self.next_of_kin_surname or "",
             "relationship": self.relationship or "",

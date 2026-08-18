@@ -5,7 +5,7 @@ from openpyxl import Workbook
 
 from app import create_app
 from app.extensions import db
-from app.heatmap.routes import parse_heatmap_excel, reconcile_heatmap_records
+from app.heatmap.routes import number, parse_heatmap_excel, reconcile_heatmap_records
 from app.models import Franchise, HeatmapRecord, Permission, Role, User, UserModuleAccess, user_franchises
 
 
@@ -281,3 +281,42 @@ def test_migration_assigns_unscoped_import_to_creator_primary_franchise():
 
         db.session.expire_all()
         assert db.session.get(HeatmapRecord, record_id).franchise_id == franchise.id
+
+
+def test_heatmap_data_rejects_non_finite_numbers_and_serializes_legacy_values():
+    assert number("NaN") is None
+    assert number("Infinity") is None
+    assert number("-Infinity") is None
+
+    app = create_app(TestConfig)
+    with app.app_context():
+        db.create_all()
+        permission = Permission(
+            module="Heat Map", action="view", code="heat_map:view", label="View Heat Map"
+        )
+        role = Role(name="Admin", permissions=[permission])
+        franchise = Franchise(business_name="Northcliff (F)")
+        admin = User(
+            name="Admin", surname="User", email="finite@example.com",
+            password_hash="x", roles=[role], assigned_franchises=[franchise],
+        )
+        record = HeatmapRecord(
+            franchise=franchise, mf_file="MF-BAD-NUMBER", deceased_name="Legacy",
+            latitude=float("inf"), longitude=float("-inf"), weight=float("nan"),
+        )
+        db.session.add_all([admin, record])
+        db.session.commit()
+
+        client = app.test_client()
+        with client.session_transaction() as session:
+            session["_user_id"] = str(admin.id)
+            session["_fresh"] = True
+
+        response = client.get(f"/heat-map/data?franchise_id={franchise.id}")
+        assert response.status_code == 200
+        assert b"Infinity" not in response.data
+        assert b"NaN" not in response.data
+        payload = response.get_json()
+        assert payload["records"][0]["latitude"] is None
+        assert payload["records"][0]["longitude"] is None
+        assert payload["records"][0]["weight"] == 1

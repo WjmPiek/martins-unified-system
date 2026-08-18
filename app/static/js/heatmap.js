@@ -4,8 +4,17 @@
   const $ = (id) => document.getElementById(id);
 
   function esc(v) { return String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-  function numeric(v) { const n = Number(v); return Number.isFinite(n) ? n : null; }
-  function hasPoint(r) { return numeric(r.latitude) !== null && numeric(r.longitude) !== null; }
+  function numeric(v) {
+    if (v === null || v === undefined || String(v).trim() === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  function hasPoint(r) {
+    const latitude = numeric(r.latitude);
+    const longitude = numeric(r.longitude);
+    return latitude !== null && longitude !== null &&
+      latitude >= -90 && latitude <= 90 && longitude >= -180 && longitude <= 180;
+  }
   function fullAddress(r) { return r.fullAddress || [r.address, r.city, r.province, r.country || 'South Africa'].filter(Boolean).join(', '); }
   function recordTypeLabel(r) {
     return String(r.recordType || 'deceased').replaceAll('_', ' ').replace(/\b\w/g, c => c.toUpperCase());
@@ -176,7 +185,13 @@
     updateStats();
     renderVenueGroups();
     renderTable();
-    renderMap(fit);
+    try {
+      renderMap(fit);
+    } catch (error) {
+      // A bad legacy coordinate or Maps API issue must not hide otherwise
+      // valid records, totals, filters and table rows.
+      console.error('Heat Map rendering failed', error);
+    }
   }
 
   async function loadData(fit) {
@@ -198,7 +213,8 @@
       const contentType = res.headers.get('content-type') || '';
       if (!contentType.includes('application/json')) throw new Error('Heat map data request returned an invalid response');
       const data = await res.json();
-      state.records = data.records || [];
+      if (!data || !Array.isArray(data.records)) throw new Error('Heat map data response is incomplete');
+      state.records = data.records;
       applyFilters(fit);
       if (status) {
         status.className = 'alert success';
@@ -212,7 +228,7 @@
       if (body) body.innerHTML = '<tr><td colspan="8">Heat map data could not be loaded. Refresh the page and try again.</td></tr>';
       if (status) {
         status.className = 'alert danger';
-        status.textContent = 'Heat Map records could not be loaded. Please refresh the page or contact Admin.';
+        status.textContent = `Heat Map records could not be loaded: ${error.message || 'unknown error'}. Please refresh the page or contact Admin.`;
       }
     }
   }

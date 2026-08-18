@@ -1,6 +1,7 @@
 from collections import Counter
 from datetime import datetime
 from functools import wraps
+import math
 from pathlib import Path
 
 from flask import Blueprint, abort, current_app, jsonify, render_template, request, redirect, url_for, flash, send_file
@@ -124,7 +125,8 @@ def number(value):
     if value in (None, ""):
         return None
     try:
-        return float(str(value).strip().replace(",", "."))
+        parsed = float(str(value).strip().replace(",", "."))
+        return parsed if math.isfinite(parsed) else None
     except ValueError:
         return None
 
@@ -545,11 +547,15 @@ def download_template(template_type="deceased-information"):
 @permission_required("heat_map:view")
 def data():
     records = scoped_query().order_by(HeatmapRecord.city.asc(), HeatmapRecord.mf_file.asc()).all()
+    serialized_records = [record.to_dict() for record in records]
     province_counts = Counter(record.province for record in records if record.province)
     city_counts = Counter(record.city for record in records if record.city)
-    mapped = sum(1 for record in records if record.latitude is not None and record.longitude is not None)
+    mapped = sum(
+        1 for record in serialized_records
+        if record["latitude"] is not None and record["longitude"] is not None
+    )
     response = jsonify({
-        "records": [record.to_dict() for record in records],
+        "records": serialized_records,
         "summary": {
             "total": len(records),
             "mapped": mapped,
