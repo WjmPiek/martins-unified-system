@@ -10,7 +10,8 @@ from app.admin.routes import (
 from app.extensions import db
 from app.franchise.routes import accessible_franchises_for_current_user
 from app.franchise_context import get_accessible_franchises
-from app.models import Franchise, Permission, Role, User, user_franchises
+from app.models import Franchise, MonthlyFigure, Permission, Role, User, user_franchises
+from app.royalties.routes import get_figures, get_ordered_linked_franchises_for_user
 
 
 class TestConfig:
@@ -129,6 +130,61 @@ def test_grouped_main_franchise_user_keeps_one_primary_and_can_log_in():
             assert session.get("_user_id") == str(owner.id)
             messages = [message for _category, message in session.get("_flashes", [])]
         assert "A Franchise User must be linked to exactly one primary franchise." not in messages
+
+
+def test_grouped_main_franchise_user_royalty_scope_includes_linked_branches():
+    app = create_app(TestConfig)
+    with app.app_context():
+        db.create_all()
+        owner_role = Role(name="Franchise User")
+        main = Franchise(business_name="Centurion")
+        grouped_branch = Franchise(business_name="Grouped Branch")
+        owner = User(
+            name="Centurion",
+            surname="User",
+            email="centurion@martinsdirect.com",
+            password_hash="x",
+            roles=[owner_role],
+        )
+        db.session.add_all([main, grouped_branch, owner])
+        db.session.flush()
+        set_primary_franchise_link(owner, main, [main, grouped_branch])
+        db.session.add_all([
+            MonthlyFigure(
+                franchise=main,
+                month=6,
+                year=2026,
+                funeral_receipts=100,
+            ),
+            MonthlyFigure(
+                franchise=grouped_branch,
+                month=6,
+                year=2026,
+                funeral_receipts=200,
+            ),
+        ])
+        db.session.commit()
+
+        with app.test_request_context("/royalties/?month=6&year=2026"):
+            login_user(owner)
+            # Normal application access stays on the primary franchise only.
+            assert [item.id for item in owner.accessible_franchises()] == [main.id]
+            # The Royalty page receives the full explicitly linked billing group.
+            royalty_scope = get_ordered_linked_franchises_for_user(owner)
+            assert [item.id for item in royalty_scope] == [main.id, grouped_branch.id]
+            figures, selected, linked, show_all, month, year = get_figures()
+            assert (month, year) == (6, 2026)
+            assert selected.id == main.id
+            assert [item.id for item in linked] == [main.id, grouped_branch.id]
+            assert show_all is False
+            assert len(figures) == 3
+            assert figures[0].is_grouped_summary is True
+            assert figures[0].source_branch_names == ["Centurion", "Grouped Branch"]
+            assert {item.franchise.business_name for item in figures[1:]} == {
+                "Centurion",
+                "Grouped Branch",
+            }
+            logout_user()
 
 
 def test_inactive_business_overview_selection_opens_the_same_details_record():

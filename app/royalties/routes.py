@@ -247,8 +247,11 @@ def is_franchise_side_user():
 
 
 def get_ordered_linked_franchises_for_user(user):
-    if user.id == current_user.id and current_user.is_franchise_scoped_user():
-        return current_user.accessible_franchises()
+    # The ordinary tenant scope deliberately exposes only the primary branch.
+    # Royalty grouping is the one exception: the owner-level Franchise User
+    # must be able to see the separate royalty rows for every explicitly linked
+    # branch and the combined total calculated with the primary branch's scale.
+    # Reading assigned_franchises here does not broaden access elsewhere.
     return ordered_linked_franchises_for_user(user)
 
 
