@@ -30,7 +30,7 @@ user_franchises = db.Table(
 OPTIONAL_FRANCHISE_MODULES = {
     "heat_map:view",
     "attendance:view",
-    "insurance_claims:view",
+    "insurance_app:view",
 }
 MANDATORY_FRANCHISE_MODULES = {"manuals:view"}
 

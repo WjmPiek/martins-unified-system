@@ -1,0 +1,1 @@
+"""External insurance application launcher."""

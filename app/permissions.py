@@ -12,6 +12,7 @@ MODULES = [
     "Joinings",
     "Funeral Services",
     "Insurance Claims",
+    "Insurance Applications",
     "Attendance",
     "Finance",
     "Users",

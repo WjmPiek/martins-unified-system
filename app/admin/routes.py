@@ -28,7 +28,7 @@ FRANCHISE_CREATABLE_ROLE_NAMES = ["Franchise Manager", "Franchise Employee", "Fr
 FRANCHISE_OPTIONAL_MODULES = (
     ("heat_map:view", "Heat Map", "Franchise coverage, density and map categories"),
     ("attendance:view", "Attendance", "Staff attendance workspace"),
-    ("insurance_claims:view", "Insurance Claims", "Insurance claims workspace"),
+    ("insurance_app:view", "Insurance Applications", "Online insurance application system"),
 )
 FRANCHISE_REQUIRED_MODULES = (
     ("manuals:view", "Manuals", "Compulsory for every Franchise User"),

@@ -74,6 +74,7 @@ def create_app(config_class=Config):
     from app.manuals.routes import manuals_bp
     from app.insurance_claims.routes import insurance_claims_bp
     from app.claims_launch.routes import claims_launch_bp
+    from app.insurance_launch.routes import insurance_launch_bp
     from app.attendance_launch.routes import attendance_launch_bp
     from app.leaderboard.routes import leaderboard_bp
     from app.performance.routes import performance_bp
@@ -90,6 +91,7 @@ def create_app(config_class=Config):
     app.register_blueprint(manuals_bp)
     app.register_blueprint(insurance_claims_bp)
     app.register_blueprint(claims_launch_bp)
+    app.register_blueprint(insurance_launch_bp)
     app.register_blueprint(attendance_launch_bp)
     app.register_blueprint(leaderboard_bp)
     app.register_blueprint(performance_bp)
