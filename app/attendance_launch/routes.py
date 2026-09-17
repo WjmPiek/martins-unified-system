@@ -58,6 +58,9 @@ def _franchise_name(franchise) -> str:
 @login_required
 def launch():
     """Open Attendance with the current Martins user and access scope."""
+    if not current_user.has_permission("attendance:view"):
+        abort(403)
+
     endpoint = _attendance_endpoint()
     secret = _launch_secret()
     if not endpoint or not secret:

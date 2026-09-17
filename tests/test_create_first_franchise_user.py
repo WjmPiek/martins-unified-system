@@ -1,4 +1,7 @@
+from urllib.parse import parse_qs, urlparse
+
 from flask import g
+from itsdangerous import URLSafeTimedSerializer
 
 from app import create_app
 from app.extensions import db
@@ -114,9 +117,20 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         assert "Insurance Applications" in franchise_portal.get_data(as_text=True)
 
         monkeypatch.delenv("INSURANCE_APP_URL", raising=False)
+        monkeypatch.setenv("INSURANCE_LAUNCH_SECRET", "test-insurance-launch-secret")
         launch = client.get("/launch/insurance")
         assert launch.status_code == 302
-        assert launch.headers["Location"] == "https://insurance.martinssystem.co.za/"
+        destination = urlparse(launch.headers["Location"])
+        assert destination.scheme == "https"
+        assert destination.netloc == "insurance.martinssystem.co.za"
+        assert destination.path == "/auth/launch"
+        token = parse_qs(destination.query)["token"][0]
+        payload = URLSafeTimedSerializer(
+            "test-insurance-launch-secret", salt="martins-insurance-launch-v1"
+        ).loads(token, max_age=120)
+        assert payload["module"] == "insurance"
+        assert payload["email"] == "yolandi@example.com"
+        assert payload["franchises"] == ["Panorama"]
 
         with client.session_transaction() as session:
             session["_user_id"] = str(admin.id)
@@ -131,3 +145,13 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         owner = db.session.get(User, owner.id)
         assert owner.has_permission("manuals:view") is True
         assert owner.has_permission("heat_map:view") is False
+        assert owner.has_permission("attendance:view") is False
+        assert owner.has_permission("insurance_app:view") is False
+
+        with client.session_transaction() as session:
+            session["_user_id"] = str(owner.id)
+            session["_fresh"] = True
+        g.pop("_login_user", None)
+        assert client.get("/launch/attendance").status_code == 403
+        g.pop("_login_user", None)
+        assert client.get("/launch/insurance").status_code == 403

@@ -1,0 +1,97 @@
+/*
+ * Martins shared platform contract.
+ *
+ * This file is intentionally small and stable.  Every standalone Martins
+ * module loads this URL after its module stylesheet, so global typography,
+ * colours and controls are governed by one source of truth while each module
+ * remains free to keep its own layout-specific CSS.
+ */
+:root {
+  --martins-font: Arial, Helvetica, sans-serif;
+  --martins-bg: #f7f8fb;
+  --martins-surface: #ffffff;
+  --martins-surface-soft: #f8fafc;
+  --martins-primary: #6b4aa0;
+  --martins-primary-dark: #583b88;
+  --martins-accent: #8f73bd;
+  --martins-text: #18202a;
+  --martins-muted: #64707d;
+  --martins-border: #dce2e8;
+  --martins-success: #20795a;
+  --martins-danger: #b43b47;
+  --martins-radius: 12px;
+  --martins-shadow: 0 12px 30px rgba(24, 32, 42, .08);
+  --martins-focus: 0 0 0 4px rgba(107, 74, 160, .16);
+}
+
+html,
+body,
+button,
+input,
+select,
+textarea {
+  font-family: var(--martins-font) !important;
+  letter-spacing: 0 !important;
+}
+
+body {
+  color: var(--martins-text);
+  background-color: var(--martins-bg);
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+h1 { font-size: clamp(1.75rem, 2.25vw, 2.25rem); }
+h2 { font-size: clamp(1.35rem, 1.8vw, 1.75rem); }
+h3 { font-size: 1.15rem; }
+h1, h2, h3, h4, h5, h6 { color: var(--martins-text); }
+
+a { color: var(--martins-primary); }
+a:hover { color: var(--martins-primary-dark); }
+
+button,
+.btn,
+input[type="submit"],
+input[type="button"] {
+  border-radius: 8px;
+}
+
+button:focus-visible,
+.btn:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+a:focus-visible {
+  outline: 0;
+  box-shadow: var(--martins-focus);
+}
+
+input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]),
+select,
+textarea {
+  border-color: var(--martins-border);
+  border-radius: 6px;
+}
+
+.card,
+.panel,
+.form-card,
+.form-section-card,
+.metric-card,
+.dashboard-card {
+  border-color: var(--martins-border);
+}
+
+.muted,
+.text-muted {
+  color: var(--martins-muted) !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
