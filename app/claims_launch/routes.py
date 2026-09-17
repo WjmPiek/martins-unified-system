@@ -14,7 +14,9 @@ claims_launch_bp = Blueprint("claims_launch", __name__)
 
 
 def _claims_endpoint() -> str:
-    return os.getenv("CLAIMS_APP_URL", "").strip().rstrip("/")
+    return os.getenv(
+        "CLAIMS_APP_URL", "https://insurance.martinssystem.co.za"
+    ).strip().rstrip("/")
 
 
 def _claims_signing_secret() -> str:

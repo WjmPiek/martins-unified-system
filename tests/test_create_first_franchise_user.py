@@ -12,7 +12,7 @@ class TestConfig:
     TESTING = True
 
 
-def test_admin_creates_brand_new_franchise_user_from_franchise_details():
+def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypatch):
     app = create_app(TestConfig)
     with app.app_context():
         db.create_all()
@@ -60,6 +60,7 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details():
         assert manual_access.is_enabled is True
         assert owner.has_permission("manuals:view") is True
         assert owner.has_permission("heat_map:view") is False
+        assert owner.has_permission("insurance_claims:view") is False
         assert owner.assigned_franchise_id() == franchise.id
         assert owner.can_access_franchise(franchise.id)
         link = db.session.execute(
@@ -81,6 +82,7 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details():
         users_html = users_page.get_data(as_text=True)
         assert "yolandi@example.com" in users_html
         assert "Manuals — Compulsory" in users_html
+        assert "Insurance Claims" in users_html
         assert "Manuals (Compulsory)" not in users_html
 
         activate = client.post(
@@ -93,6 +95,36 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details():
         assert owner.has_permission("manuals:view") is True
         assert owner.has_permission("heat_map:view") is True
 
+        activate_insurance = client.post(
+            f"/admin/franchise-users/{owner.id}/modules",
+            data={"module_codes": ["heat_map:view", "insurance_claims:view"]},
+        )
+        assert activate_insurance.status_code == 302
+        db.session.expire_all()
+        owner = db.session.get(User, owner.id)
+        assert owner.has_permission("insurance_claims:view") is True
+
+        with client.session_transaction() as session:
+            session["_user_id"] = str(owner.id)
+            session["_fresh"] = True
+        g.pop("_login_user", None)
+        g.pop("accessible_franchises_cache", None)
+        franchise_portal = client.get("/manuals/")
+        assert franchise_portal.status_code == 200
+        assert "Insurance Claims" in franchise_portal.get_data(as_text=True)
+
+        monkeypatch.delenv("CLAIMS_APP_URL", raising=False)
+        monkeypatch.setenv("CLAIMS_LAUNCH_SECRET", "test-claims-secret")
+        launch = client.get("/launch/claims")
+        assert launch.status_code == 302
+        assert launch.headers["Location"].startswith(
+            "https://insurance.martinssystem.co.za/auth/launch?token="
+        )
+
+        with client.session_transaction() as session:
+            session["_user_id"] = str(admin.id)
+            session["_fresh"] = True
+        g.pop("_login_user", None)
         deactivate_optional = client.post(
             f"/admin/franchise-users/{owner.id}/modules",
             data={},

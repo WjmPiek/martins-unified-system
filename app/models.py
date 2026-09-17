@@ -27,7 +27,11 @@ user_franchises = db.Table(
     db.Column("is_primary", db.Boolean, default=False, nullable=False),
 )
 
-OPTIONAL_FRANCHISE_MODULES = {"heat_map:view", "attendance:view"}
+OPTIONAL_FRANCHISE_MODULES = {
+    "heat_map:view",
+    "attendance:view",
+    "insurance_claims:view",
+}
 MANDATORY_FRANCHISE_MODULES = {"manuals:view"}
 
 ADMIN_ROLE_NAMES = {"Admin", "Super Admin"}
