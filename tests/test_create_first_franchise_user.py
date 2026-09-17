@@ -41,6 +41,9 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         html = form_page.get_data(as_text=True)
         assert "Franchise Details — Create New Franchise User" in html
         assert "Create Franchise and User" in html
+        assert "Client coverage and density" in html
+        assert "Staff attendance and workforce tools" in html
+        assert "Policies, manuals and resources" in html
 
         response = client.post(
             "/franchise/details/new-franchise-user",
@@ -114,7 +117,11 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         g.pop("accessible_franchises_cache", None)
         franchise_portal = client.get("/manuals/")
         assert franchise_portal.status_code == 200
-        assert "Insurance Applications" in franchise_portal.get_data(as_text=True)
+        portal_html = franchise_portal.get_data(as_text=True)
+        assert "Insurance Applications" in portal_html
+        assert "Heat Map" in portal_html
+        assert "Manuals" in portal_html
+        assert "Open Attendance" not in portal_html
 
         monkeypatch.delenv("INSURANCE_APP_URL", raising=False)
         monkeypatch.setenv("INSURANCE_LAUNCH_SECRET", "test-insurance-launch-secret")
@@ -155,3 +162,8 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         assert client.get("/launch/attendance").status_code == 403
         g.pop("_login_user", None)
         assert client.get("/launch/insurance").status_code == 403
+        g.pop("_login_user", None)
+        deactivated_portal = client.get("/manuals/").get_data(as_text=True)
+        assert "Open Heat Map" not in deactivated_portal
+        assert "Open the online application system" not in deactivated_portal
+        assert "Open Manuals" in deactivated_portal

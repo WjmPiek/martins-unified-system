@@ -95,3 +95,194 @@ textarea {
     transition-duration: .01ms !important;
   }
 }
+
+/* Shared authenticated application shell used by every Martins module. */
+*, *::before, *::after { box-sizing: border-box; }
+
+.app-sidebar,
+.executive-sidebar,
+.sidebar.sidebar--reference,
+.app-shell > .sidebar,
+.main-site-page-shell > .sidebar {
+  background: var(--martins-primary) !important;
+  color: #fff !important;
+  border-radius: 0 !important;
+  border-color: rgba(255,255,255,.14) !important;
+  box-shadow: 4px 0 18px rgba(24,32,42,.16) !important;
+}
+
+.sidebar-brand,
+.executive-brand,
+.sidebar__brand--card,
+.app-shell > .sidebar .brand-block {
+  background: rgba(255,255,255,.10) !important;
+  border: 1px solid rgba(255,255,255,.14) !important;
+  border-radius: 14px !important;
+  color: #fff !important;
+}
+
+.sidebar-brand *,
+.executive-brand *,
+.sidebar__brand--card *,
+.app-shell > .sidebar .brand-block * {
+  color: #fff !important;
+}
+
+.app-topbar,
+.topbar,
+.topbar.topbar--reference,
+.martins-app-topbar,
+.martins-module-topbar {
+  background: #fff !important;
+  border-color: var(--martins-border) !important;
+  border-radius: 0 !important;
+  box-shadow: 0 4px 18px rgba(24,32,42,.05) !important;
+}
+
+.martins-module-topbar {
+  min-height: 84px !important;
+  padding: 12px 30px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 20px !important;
+}
+
+.martins-module-brand,
+.martins-module-account {
+  display: flex !important;
+  align-items: center !important;
+  gap: 12px !important;
+}
+
+.martins-module-brand {
+  color: var(--martins-text) !important;
+  font-size: 22px !important;
+  text-decoration: none !important;
+}
+
+.martins-module-brand img {
+  width: 112px !important;
+  height: 52px !important;
+  object-fit: contain !important;
+}
+
+.martins-module-account > a {
+  padding: 9px 13px !important;
+  color: var(--martins-primary-dark) !important;
+  background: #fff !important;
+  border: 1px solid var(--martins-border) !important;
+  border-radius: 9px !important;
+  font-weight: 700 !important;
+  text-decoration: none !important;
+}
+
+.topbar-account,
+.topbar__account,
+.martins-app-topbar-account,
+.martins-module-account {
+  color: var(--martins-muted) !important;
+}
+
+.topbar-account strong,
+.topbar__account strong,
+.martins-app-topbar-account strong,
+.martins-module-account strong {
+  color: var(--martins-text) !important;
+}
+
+.topbar-role,
+.topbar__role,
+.role-pill,
+.martins-app-topbar-account small {
+  color: var(--martins-primary) !important;
+  background: #f1ecf7 !important;
+  border-radius: 999px !important;
+}
+
+.side-link,
+.side-toggle,
+.sidebar-menu__item,
+.sidebar-tabs .tab-button,
+.sidebar-nav > a {
+  border-radius: 12px !important;
+}
+
+.side-link:hover,
+.side-link.active,
+.side-group[open] > .side-toggle,
+.sidebar-menu__item:hover,
+.sidebar-menu__item.is-active,
+.sidebar-tabs .tab-button:hover,
+.sidebar-tabs .tab-button.active {
+  background: rgba(255,255,255,.18) !important;
+  color: #fff !important;
+}
+
+.side-submenu,
+.sidebar-submenu,
+.sidebar-subnav {
+  background: #fff !important;
+  color: var(--martins-text) !important;
+  border-radius: 10px !important;
+}
+
+.side-submenu a,
+.sidebar-submenu a,
+.sidebar-subnav a {
+  color: var(--martins-text) !important;
+}
+
+.side-submenu a:hover,
+.side-submenu a.active,
+.sidebar-submenu a:hover,
+.sidebar-submenu a.is-active,
+.sidebar-subnav a:hover {
+  color: var(--martins-primary) !important;
+  background: #f1ecf7 !important;
+}
+
+.btn-primary,
+button.primary,
+.primary-button,
+.executive-filter button,
+.logout-button {
+  color: #fff !important;
+  background: var(--martins-primary) !important;
+  border-color: var(--martins-primary) !important;
+}
+
+.btn-primary:hover,
+button.primary:hover,
+.primary-button:hover,
+.executive-filter button:hover,
+.logout-button:hover {
+  background: var(--martins-primary-dark) !important;
+  border-color: var(--martins-primary-dark) !important;
+}
+
+.card,
+.panel,
+.form-card,
+.form-section-card,
+.metric-card,
+.dashboard-card,
+.exec-card,
+.content-card,
+.section-header {
+  background: var(--martins-surface) !important;
+  border: 1px solid var(--martins-border) !important;
+  border-radius: var(--martins-radius) !important;
+  box-shadow: var(--martins-shadow) !important;
+}
+
+@media (max-width: 980px) {
+  .desktop-app-header { display: none !important; }
+  .app-sidebar,
+  .executive-sidebar,
+  .sidebar.sidebar--reference,
+  .app-shell > .sidebar,
+  .main-site-page-shell > .sidebar {
+    box-shadow: none !important;
+  }
+}

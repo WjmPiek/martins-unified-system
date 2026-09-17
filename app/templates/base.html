@@ -170,6 +170,30 @@
                             </div>
                         </details>
                         {% endif %}
+                        {% if current_user.has_permission('heat_map:view') %}
+                        <details class="nav-section nav-domain" open>
+                            <summary><span class="nav-icon">◎</span><span><strong>Heat Map</strong><small>Client coverage and density</small></span></summary>
+                            <div class="nav-subtabs">
+                                <a href="{{ url_for('heatmap.index') }}">Open Heat Map <small>Explore client locations and franchise coverage</small></a>
+                            </div>
+                        </details>
+                        {% endif %}
+                        {% if current_user.has_permission('attendance:view') %}
+                        <details class="nav-section nav-domain" open>
+                            <summary><span class="nav-icon">A</span><span><strong>Attendance</strong><small>Staff attendance and workforce tools</small></span></summary>
+                            <div class="nav-subtabs">
+                                <a href="{{ url_for('attendance_launch.launch') }}">Open Attendance <small>Launch the attendance workspace</small></a>
+                            </div>
+                        </details>
+                        {% endif %}
+                        {% if current_user.has_permission('manuals:view') %}
+                        <details class="nav-section nav-domain" open>
+                            <summary><span class="nav-icon">M</span><span><strong>Manuals</strong><small>Policies, manuals and resources</small></span></summary>
+                            <div class="nav-subtabs">
+                                <a href="{{ url_for('manuals.index') }}">Open Manuals <small>Browse Martins manuals and indexes</small></a>
+                            </div>
+                        </details>
+                        {% endif %}
                         {% if current_user.has_permission('franchise_management:view') and (is_admin_user or is_finance_user) %}
                         <details class="nav-section nav-domain" open>
                             <summary><span class="nav-icon">◎</span><span><strong>Franchise Intelligence</strong><small>Health, growth and risk</small></span></summary>
@@ -222,13 +246,6 @@
                         </details>
                         {% endif %}
 
-                        <div class="nav-utility-links">
-                            {% if current_user.has_permission('manuals:view') %}<a href="{{ url_for('manuals.index') }}">Manuals</a>{% endif %}
-                            {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}">Heat Map</a>{% endif %}
-                            {% if current_user.has_permission('insurance_claims:view') and not is_franchise_user %}<a href="{{ url_for('claims_launch.launch') }}">Insurance Claims</a>{% endif %}
-                            {% if current_user.has_permission('insurance_app:view') %}<a href="{{ url_for('insurance_launch.launch') }}">Insurance Applications</a>{% endif %}
-                            {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance_launch.launch') }}">Attendance</a>{% endif %}
-                        </div>
                     {% endif %}
                 </nav>
                 </div>
