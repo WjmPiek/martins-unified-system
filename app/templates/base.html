@@ -24,7 +24,7 @@
     <link rel="preload" href="{{ brand_logo_url }}" as="image" fetchpriority="high">
     <link rel="stylesheet" href="{{ asset_url('css/styles.css') }}">
     <link rel="stylesheet" href="{{ asset_url('css/martins-theme.css') }}">
-    <link rel="stylesheet" href="{{ asset_url('css/martins-platform.css') }}">
+    <link rel="stylesheet" href="{{ url_for('platform_theme') }}">
 </head>
 {% set shell_role_names = current_user.roles|map(attribute='name')|list if current_user.is_authenticated else [] %}
 {% set shell_is_franchise_user = 'Franchise User' in shell_role_names or 'Franchise Manager' in shell_role_names or 'Franchise Employee' in shell_role_names or 'Franchise Agent' in shell_role_names or 'Manager' in shell_role_names or 'Employee' in shell_role_names or 'Agent' in shell_role_names or 'Read Only User' in shell_role_names %}

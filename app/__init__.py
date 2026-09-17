@@ -1,4 +1,5 @@
 ﻿from flask import Flask, g, request, url_for
+from flask import send_file
 import click
 import logging
 import time
@@ -53,6 +54,18 @@ def create_app(config_class=Config):
 
     def _static_asset_url(relative_path):
         return url_for("static", filename=relative_path, v=_static_asset_version(relative_path))
+
+    @app.get("/platform/theme.css")
+    def platform_theme():
+        """Serve the cross-module design contract without an immutable cache."""
+        response = send_file(
+            Path(app.static_folder) / "css" / "martins-platform.css",
+            mimetype="text/css",
+            conditional=True,
+            max_age=0,
+        )
+        response.headers["Cache-Control"] = "no-cache, max-age=0, must-revalidate"
+        return response
 
     db.init_app(app)
     migrate.init_app(app, db)
