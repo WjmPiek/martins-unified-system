@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 from decimal import Decimal, ROUND_HALF_UP
 
 from flask import g, has_request_context
-from sqlalchemy import func
+from sqlalchemy import func, tuple_
 
 from app.extensions import db
 from app.franchise_context import get_accessible_franchises, get_selected_franchise, is_franchise_view_mode
@@ -1546,6 +1546,112 @@ def _normalise_growth_cache_value(growth_percent):
     except (ArithmeticError, TypeError, ValueError):
         return "0.0000"
 
+
+def _graph_period_values(franchise_ids, metric_key, month, year, periods):
+    """Load everything needed by all graph panels in one grouped query.
+
+    The previous implementation called ``period_actuals`` repeatedly for every
+    point and every panel (including 12 nested calls per rolling-total point).
+    A 36-month graph could therefore execute hundreds of queries on a cache
+    miss.  PerformanceResult is already the prepared analytics table, so one
+    bounded query can supply current, prior-month, prior-year and rolling data.
+    """
+    selected_periods = _series_periods(month, year, periods)
+    required = set()
+    for selected_month, selected_year in selected_periods:
+        required.add((selected_month, selected_year))
+        required.add(previous_month(selected_month, selected_year))
+        required.add((selected_month, selected_year - 1))
+        rolling_month, rolling_year = selected_month, selected_year
+        for _ in range(12):
+            required.add((rolling_month, rolling_year))
+            rolling_month, rolling_year = previous_month(rolling_month, rolling_year)
+
+    if not franchise_ids or not required:
+        return selected_periods, {}
+    rows = (
+        db.session.query(
+            PerformanceResult.month,
+            PerformanceResult.year,
+            func.coalesce(func.sum(PerformanceResult.actual_value), 0).label("actual"),
+            func.coalesce(func.sum(PerformanceResult.target_value), 0).label("target"),
+        )
+        .filter(
+            PerformanceResult.franchise_id.in_(franchise_ids),
+            PerformanceResult.metric == metric_key,
+            tuple_(PerformanceResult.month, PerformanceResult.year).in_(sorted(required)),
+        )
+        .group_by(PerformanceResult.month, PerformanceResult.year)
+        .all()
+    )
+    values = {
+        (int(row.month), int(row.year)): {
+            "actual": to_decimal(row.actual), "target": to_decimal(row.target),
+        }
+        for row in rows
+    }
+    return selected_periods, values
+
+
+def _bulk_graph_payload(franchise_ids, metric_key, month, year, periods):
+    selected_periods, values = _graph_period_values(franchise_ids, metric_key, month, year, periods)
+    if not values:
+        return None
+
+    actual_vs_target = []
+    previous_year_points = []
+    rolling_12 = []
+    forecast = []
+    growth_trend = []
+    for point_month, point_year in selected_periods:
+        label = f"{MONTH_NAME.get(point_month, point_month)[:3]} {point_year}"
+        current = values.get((point_month, point_year), {})
+        actual = current.get("actual", Decimal("0"))
+        target = current.get("target", Decimal("0"))
+        prior_year = values.get((point_month, point_year - 1), {}).get("actual", Decimal("0"))
+        prior_month_key = previous_month(point_month, point_year)
+        prior_month = values.get(prior_month_key, {}).get("actual", Decimal("0"))
+
+        rolling_total = Decimal("0")
+        rolling_month, rolling_year = point_month, point_year
+        for _ in range(12):
+            rolling_total += values.get((rolling_month, rolling_year), {}).get("actual", Decimal("0"))
+            rolling_month, rolling_year = previous_month(rolling_month, rolling_year)
+
+        projected = actual
+        if actual <= 0:
+            projected = safe_average([prior_month, prior_year, target])
+        elif target > 0 and actual < target:
+            projected = safe_average([actual, target, prior_month if prior_month > 0 else actual])
+        baseline = prior_year if prior_year > 0 else prior_month
+
+        actual_vs_target.append({
+            "label": label, "actual": float(round_money(actual)), "target": float(round_money(target)),
+            "achievement": float(percent(actual, target)),
+        })
+        previous_year_points.append({
+            "label": label, "actual": float(round_money(actual)),
+            "previous_year": float(round_money(prior_year)),
+            "growth_percent": float(growth_rate(actual, prior_year)),
+        })
+        rolling_12.append({"label": label, "rolling_total": float(round_money(rolling_total))})
+        forecast.append({
+            "label": label, "actual": float(round_money(actual)), "target": float(round_money(target)),
+            "forecast": float(round_money(projected)), "forecast_percent": float(percent(projected, target)),
+        })
+        growth_trend.append({"label": label, "growth_percent": float(growth_rate(actual, baseline))})
+
+    return {
+        "metric_key": metric_key,
+        "metric_label": PERFORMANCE_METRICS[metric_key]["label"],
+        "actual_vs_target": actual_vs_target,
+        "previous_year": previous_year_points,
+        "rolling_12": rolling_12,
+        "forecast": forecast,
+        "growth_trend": growth_trend,
+        "cache_status": "rebuilt",
+    }
+
 def graph_engine_payload_for_franchises(franchise_ids, metric_key, month, year, periods=12, mode='growth_bracket', growth_percent=DEFAULT_GROWTH_PERCENT, allow_rebuild=False):
     franchise_ids = filter_active_franchise_ids(franchise_ids or [])
     cache_key = build_cache_key(
@@ -1573,16 +1679,15 @@ def graph_engine_payload_for_franchises(franchise_ids, metric_key, month, year, 
             'cache_status': 'missing',
             'message': 'Analytics cache is not ready. Ask Admin to rebuild this period.',
         }
-    payload = {
-        'metric_key': metric_key,
-        'metric_label': PERFORMANCE_METRICS[metric_key]['label'],
-        'actual_vs_target': aggregate_trend_series(franchise_ids, metric_key, month, year, periods, mode, growth_percent),
-        'previous_year': aggregate_previous_year_series(franchise_ids, metric_key, month, year, periods),
-        'rolling_12': aggregate_rolling_12_series(franchise_ids, metric_key, month, year, periods),
-        'forecast': aggregate_forecast_series(franchise_ids, metric_key, month, year, periods, mode, growth_percent),
-        'growth_trend': aggregate_growth_trend_series(franchise_ids, metric_key, month, year, periods),
-        'cache_status': 'rebuilt',
-    }
+    payload = _bulk_graph_payload(franchise_ids, metric_key, month, year, periods)
+    if payload is None:
+        return {
+            'metric_key': metric_key,
+            'metric_label': PERFORMANCE_METRICS[metric_key]['label'],
+            'actual_vs_target': [], 'previous_year': [], 'rolling_12': [], 'forecast': [], 'growth_trend': [],
+            'cache_status': 'missing',
+            'message': 'Analytics cache is not ready. Ask Admin to rebuild this period.',
+        }
     set_cached_payload(
         'graph_aggregate', cache_key, payload, month=month, year=year, metric=metric_key,
         scope_type='aggregate', row_count=len(franchise_ids),
@@ -1615,17 +1720,15 @@ def graph_engine_payload(franchise_id, metric_key, month, year, periods=12, mode
             'cache_status': 'missing',
             'message': 'Analytics cache is not ready. Ask Admin to rebuild this period.',
         }
-    actual_target = trend_series(franchise_id, metric_key, month, year, periods, mode, growth_percent)
-    payload = {
-        'metric_key': metric_key,
-        'metric_label': PERFORMANCE_METRICS[metric_key]['label'],
-        'actual_vs_target': actual_target,
-        'previous_year': previous_year_series(franchise_id, metric_key, month, year, periods),
-        'rolling_12': rolling_12_series(franchise_id, metric_key, month, year, periods),
-        'forecast': forecast_series(franchise_id, metric_key, month, year, periods, mode, growth_percent),
-        'growth_trend': growth_trend_series(franchise_id, metric_key, month, year, periods),
-        'cache_status': 'rebuilt',
-    }
+    payload = _bulk_graph_payload([franchise_id], metric_key, month, year, periods)
+    if payload is None:
+        return {
+            'metric_key': metric_key,
+            'metric_label': PERFORMANCE_METRICS[metric_key]['label'],
+            'actual_vs_target': [], 'previous_year': [], 'rolling_12': [], 'forecast': [], 'growth_trend': [],
+            'cache_status': 'missing',
+            'message': 'Analytics cache is not ready. Ask Admin to rebuild this period.',
+        }
     set_cached_payload(
         'graph_franchise', cache_key, payload, month=month, year=year, metric=metric_key,
         scope_type='franchise', scope_id=int(franchise_id), row_count=1,

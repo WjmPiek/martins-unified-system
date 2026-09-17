@@ -7,6 +7,7 @@ from pathlib import Path
 from flask import Blueprint, abort, current_app, jsonify, render_template, request, redirect, url_for, flash, send_file
 from flask_login import current_user, login_required
 from openpyxl import load_workbook
+from sqlalchemy import String, and_, case, cast, func, or_
 
 from app.audit import log_action
 from app.extensions import db
@@ -115,6 +116,79 @@ def scoped_query():
             abort(403)
         query = query.filter_by(franchise_id=franchise_id)
     return query
+
+
+def _record_type_expression():
+    """Return the stored heat-map category as a SQL expression.
+
+    Categories intentionally remain encoded in ``relation`` for backwards
+    compatibility.  Keeping this translation in SQL lets large maps filter and
+    aggregate without first materialising every row in Python.
+    """
+    relation = func.lower(func.trim(func.coalesce(HeatmapRecord.relation, "")))
+    mapped = func.replace(func.replace(func.substr(relation, 5), "-", "_"), " ", "_")
+    return case(
+        (relation == "mem", "insurance_clients"),
+        (relation.like("map:%"), mapped),
+        else_="deceased",
+    )
+
+
+def _filtered_query():
+    query = scoped_query()
+    province = clean(request.args.get("province"))
+    record_type = normalize_record_type(request.args.get("record_type")) if request.args.get("record_type") else ""
+    search = clean(request.args.get("q"))
+    if province:
+        query = query.filter(func.lower(HeatmapRecord.province) == province.lower())
+    if record_type:
+        query = query.filter(_record_type_expression() == record_type)
+    if search:
+        pattern = f"%{search.lower()}%"
+        query = query.filter(or_(
+            func.lower(func.coalesce(HeatmapRecord.city, "")).like(pattern),
+            func.lower(func.coalesce(HeatmapRecord.full_address, "")).like(pattern),
+            func.lower(func.coalesce(HeatmapRecord.address, "")).like(pattern),
+            func.lower(func.coalesce(HeatmapRecord.mf_file, "")).like(pattern),
+            func.lower(func.coalesce(HeatmapRecord.deceased_name, "")).like(pattern),
+            func.lower(func.coalesce(HeatmapRecord.deceased_surname, "")).like(pattern),
+            func.lower(func.coalesce(HeatmapRecord.next_of_kin_name, "")).like(pattern),
+            func.lower(func.coalesce(HeatmapRecord.next_of_kin_surname, "")).like(pattern),
+        ))
+    return query
+
+
+def _valid_coordinates_expression():
+    return and_(
+        HeatmapRecord.latitude.isnot(None),
+        HeatmapRecord.longitude.isnot(None),
+        HeatmapRecord.latitude.between(-90, 90),
+        HeatmapRecord.longitude.between(-180, 180),
+    )
+
+
+def _bounded_float(name, minimum, maximum):
+    value = request.args.get(name, type=float)
+    if value is None or not math.isfinite(value) or value < minimum or value > maximum:
+        abort(400, description=f"Invalid {name} map bound")
+    return value
+
+
+def _grid_size_for_zoom(zoom):
+    if zoom <= 5:
+        return 0.65
+    if zoom <= 7:
+        return 0.25
+    if zoom <= 9:
+        return 0.08
+    if zoom <= 11:
+        return 0.025
+    return 0.008
+
+
+def _table_record(record):
+    """Serialize a table/detail row while keeping JSON numbers browser-safe."""
+    return record.to_dict()
 
 
 def clean(value):
@@ -574,26 +648,193 @@ def download_template(template_type="deceased-information"):
 @login_required
 @permission_required("heat_map:view")
 def data():
-    records = scoped_query().order_by(HeatmapRecord.city.asc(), HeatmapRecord.mf_file.asc()).all()
-    serialized_records = [record.to_dict() for record in records]
-    province_counts = Counter(record.province for record in records if record.province)
-    city_counts = Counter(record.city for record in records if record.city)
-    mapped = sum(
-        1 for record in serialized_records
-        if record["latitude"] is not None and record["longitude"] is not None
+    query = _filtered_query()
+    valid = _valid_coordinates_expression()
+    total, mapped, south, north, west, east = query.with_entities(
+        func.count(HeatmapRecord.id),
+        func.coalesce(func.sum(case((valid, 1), else_=0)), 0),
+        func.min(case((valid, HeatmapRecord.latitude))),
+        func.max(case((valid, HeatmapRecord.latitude))),
+        func.min(case((valid, HeatmapRecord.longitude))),
+        func.max(case((valid, HeatmapRecord.longitude))),
+    ).one()
+    page = max(request.args.get("page", 1, type=int) or 1, 1)
+    per_page = min(max(request.args.get("per_page", 250, type=int) or 250, 1), 500)
+    records = (
+        query.order_by(HeatmapRecord.city.asc(), HeatmapRecord.mf_file.asc(), HeatmapRecord.id.asc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+        .all()
     )
     response = jsonify({
-        "records": serialized_records,
+        "records": [_table_record(record) for record in records],
         "summary": {
-            "total": len(records),
-            "mapped": mapped,
-            "unmapped": len(records) - mapped,
-            "province": dict(province_counts),
-            "cities": dict(city_counts.most_common(10)),
-        }
+            "total": int(total or 0),
+            "mapped": int(mapped or 0),
+            "unmapped": max(int(total or 0) - int(mapped or 0), 0),
+            "bounds": {
+                "south": south, "north": north, "west": west, "east": east,
+            } if south is not None else None,
+        },
+        "pagination": {
+            "page": page,
+            "perPage": per_page,
+            "hasMore": page * per_page < int(total or 0),
+        },
     })
     response.headers["Cache-Control"] = "no-store"
     return response
+
+
+@heatmap_bp.route("/viewport")
+@login_required
+@permission_required("heat_map:view")
+def viewport_data():
+    """Return only map data needed for the current Google Maps viewport.
+
+    Country/province views are reduced to weighted grid cells in PostgreSQL.
+    Individual records are returned only at close zoom, and always under a hard
+    cap, so a large import can never create hundreds of thousands of overlays.
+    """
+    south = _bounded_float("south", -90, 90)
+    north = _bounded_float("north", -90, 90)
+    west = _bounded_float("west", -180, 180)
+    east = _bounded_float("east", -180, 180)
+    if south >= north:
+        abort(400, description="Invalid latitude bounds")
+    zoom = min(max(request.args.get("zoom", 5, type=int) or 5, 1), 22)
+
+    query = _filtered_query().filter(_valid_coordinates_expression())
+    query = query.filter(HeatmapRecord.latitude.between(south, north))
+    if west <= east:
+        query = query.filter(HeatmapRecord.longitude.between(west, east))
+    else:
+        query = query.filter(or_(HeatmapRecord.longitude >= west, HeatmapRecord.longitude <= east))
+
+    selected_franchise = request.args.get("franchise_id", type=int)
+    detail_mode = bool(selected_franchise and zoom >= 12)
+    if detail_mode:
+        limit = min(max(request.args.get("limit", 1500, type=int) or 1500, 100), 2500)
+        records = query.order_by(HeatmapRecord.id.asc()).limit(limit + 1).all()
+        truncated = len(records) > limit
+        records = records[:limit]
+        response = jsonify({
+            "mode": "detail",
+            "points": [_table_record(record) for record in records],
+            "truncated": truncated,
+        })
+    else:
+        grid_size = _grid_size_for_zoom(zoom)
+        lat_cell = cast(HeatmapRecord.latitude / grid_size, db.Integer)
+        lng_cell = cast(HeatmapRecord.longitude / grid_size, db.Integer)
+        rows = (
+            query.with_entities(
+                lat_cell.label("lat_cell"),
+                lng_cell.label("lng_cell"),
+                func.avg(HeatmapRecord.latitude).label("latitude"),
+                func.avg(HeatmapRecord.longitude).label("longitude"),
+                func.count(HeatmapRecord.id).label("record_count"),
+            )
+            .group_by(lat_cell, lng_cell)
+            .order_by(func.count(HeatmapRecord.id).desc())
+            .limit(2500)
+            .all()
+        )
+        response = jsonify({
+            "mode": "aggregate",
+            "points": [{
+                "latitude": float(row.latitude),
+                "longitude": float(row.longitude),
+                "count": int(row.record_count),
+                "weight": int(row.record_count),
+            } for row in rows],
+            "gridSize": grid_size,
+            "truncated": len(rows) >= 2500,
+        })
+    response.headers["Cache-Control"] = "private, max-age=30"
+    return response
+
+
+@heatmap_bp.route("/venue-groups")
+@login_required
+@permission_required("heat_map:view")
+def venue_groups_data():
+    record_type = normalize_record_type(request.args.get("record_type")) if request.args.get("record_type") else ""
+    if record_type not in {"church", "cemetery", "crematorium"}:
+        return jsonify({"groups": []})
+
+    query = _filtered_query()
+    address_key = func.lower(func.trim(func.coalesce(
+        func.nullif(HeatmapRecord.full_address, ""),
+        func.nullif(HeatmapRecord.address, ""),
+        "",
+    )))
+    name = func.trim(
+        func.coalesce(HeatmapRecord.deceased_name, "") + " " +
+        func.coalesce(HeatmapRecord.deceased_surname, "")
+    )
+    coordinate_key = (
+        cast(HeatmapRecord.latitude, String) + "|" + cast(HeatmapRecord.longitude, String)
+    )
+    fallback_key = func.lower(
+        name + "|" + func.coalesce(HeatmapRecord.city, "") + "|" + func.coalesce(HeatmapRecord.province, "")
+    )
+    group_key = case(
+        (address_key != "", address_key),
+        (_valid_coordinates_expression(), coordinate_key),
+        else_=fallback_key,
+    )
+    service_key = case(
+        (func.trim(func.coalesce(HeatmapRecord.mf_file, "")) != "",
+         func.coalesce(HeatmapRecord.mf_file, "") + "|" + func.coalesce(HeatmapRecord.dod, "")),
+        else_=cast(HeatmapRecord.id, String),
+    )
+    rows = (
+        query.with_entities(
+            group_key.label("group_key"),
+            func.min(name).label("name"),
+            func.min(HeatmapRecord.city).label("city"),
+            func.min(HeatmapRecord.province).label("province"),
+            func.count(func.distinct(service_key)).label("services"),
+        )
+        .group_by(group_key)
+        .order_by(func.count(func.distinct(service_key)).desc(), func.min(name).asc())
+        .limit(500)
+        .all()
+    )
+    response = jsonify({"groups": [{
+        "name": row.name or HEATMAP_RECORD_TYPES[record_type],
+        "city": row.city or "",
+        "province": row.province or "",
+        "services": int(row.services or 0),
+    } for row in rows]})
+    response.headers["Cache-Control"] = "private, max-age=30"
+    return response
+
+
+@heatmap_bp.route("/unmapped")
+@login_required
+def unmapped_data():
+    if not (can_modify_heatmap() or can_import_heatmap()):
+        abort(403)
+    # Automatic geocoding is intentionally franchise-specific. This prevents a
+    # broad admin view from launching thousands of billable Maps requests.
+    franchise_id = request.args.get("franchise_id", type=int)
+    if not franchise_id:
+        return jsonify({"records": [], "hasMore": False})
+    limit = min(max(request.args.get("limit", 100, type=int) or 100, 1), 100)
+    query = _filtered_query().filter(
+        or_(HeatmapRecord.latitude.is_(None), HeatmapRecord.longitude.is_(None)),
+        or_(HeatmapRecord.full_address != "", HeatmapRecord.address != ""),
+    )
+    records = query.order_by(HeatmapRecord.id.asc()).limit(limit + 1).all()
+    return jsonify({
+        "records": [{
+            "id": record.id,
+            "fullAddress": record.full_address or ", ".join(filter(None, [record.address, record.city, record.province, record.country or "South Africa"])),
+        } for record in records[:limit]],
+        "hasMore": len(records) > limit,
+    })
 
 
 @heatmap_bp.route("/import", methods=["POST"])

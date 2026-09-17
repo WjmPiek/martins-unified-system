@@ -125,6 +125,9 @@
 <script>
 window.HEATMAP_CONTEXT = {
   dataUrl: "{{ url_for('heatmap.data') }}",
+  viewportUrl: "{{ url_for('heatmap.viewport_data') }}",
+  venueGroupsUrl: "{{ url_for('heatmap.venue_groups_data') }}",
+  unmappedUrl: "{{ url_for('heatmap.unmapped_data') }}",
   saveUrl: "{{ url_for('heatmap.save_record') }}",
   coordinateUrl: "{{ url_for('heatmap.save_coordinates') }}",
   canModify: {{ 'true' if can_modify_heatmap else 'false' }},

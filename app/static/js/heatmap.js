@@ -1,9 +1,10 @@
 (function () {
   const ctx = window.HEATMAP_CONTEXT || {};
   const state = {
-    records: [], filtered: [], mode: 'density', map: null, densityCircles: [], markers: [],
+    records: [], filtered: [], mapRecords: [], summary: {}, mode: 'density', map: null, densityCircles: [], markers: [],
     geocoder: null, hoverInfoWindow: null, geocodeRunning: false,
     autoGeocodedFranchises: new Set(), geocodeFailures: new Set(),
+    dataController: null, viewportController: null, venueController: null, viewportTimer: null,
   };
   const $ = (id) => document.getElementById(id);
 
@@ -95,25 +96,17 @@
   }
 
   function filteredRecords() {
-    const town = ($('heatTownFilter')?.value || '').trim().toLowerCase();
-    const province = String($('heatProvinceFilter')?.value || '').trim().toLowerCase();
-    const recordType = String($('heatRecordTypeFilter')?.value || '').trim().toLowerCase();
-    state.filtered = state.records.filter(r => {
-      const searchable = [r.city, fullAddress(r), recordName(r), r.mfFile, r.contactNumber]
-        .map(value => String(value || '').toLowerCase()).join(' ');
-      return (!town || searchable.includes(town)) &&
-             (!province || String(r.province || '').trim().toLowerCase() === province) &&
-             (!recordType || String(r.recordType || 'deceased').trim().toLowerCase() === recordType);
-    });
+    // Filtering is performed in PostgreSQL so the browser never scans the full
+    // client collection. ``records`` is only the bounded table page.
+    state.filtered = state.records;
     return state.filtered;
   }
 
   function updateStats() {
-    const records = state.filtered || [];
-    const mapped = records.filter(hasPoint).length;
-    if ($('heatTotal')) $('heatTotal').textContent = records.length;
-    if ($('heatMapped')) $('heatMapped').textContent = mapped;
-    if ($('heatUnmapped')) $('heatUnmapped').textContent = records.length - mapped;
+    const summary = state.summary || {};
+    if ($('heatTotal')) $('heatTotal').textContent = Number(summary.total || 0).toLocaleString();
+    if ($('heatMapped')) $('heatMapped').textContent = Number(summary.mapped || 0).toLocaleString();
+    if ($('heatUnmapped')) $('heatUnmapped').textContent = Number(summary.unmapped || 0).toLocaleString();
     if ($('heatModeLabel')) $('heatModeLabel').textContent = state.mode.charAt(0).toUpperCase() + state.mode.slice(1);
   }
 
@@ -192,14 +185,39 @@
     });
   }
 
+  function renderAggregateMarkers(points) {
+    if (!(state.mode === 'pins' || state.mode === 'both' || state.mode === 'clusters')) return;
+    points.forEach(point => {
+      const count = Math.max(1, Number(point.count || 1));
+      const marker = new google.maps.Marker({
+        position: { lat: Number(point.latitude), lng: Number(point.longitude) },
+        map: state.map,
+        title: `${count.toLocaleString()} map location${count === 1 ? '' : 's'} in this area`,
+        label: { text: count > 999 ? `${Math.round(count / 100) / 10}k` : String(count), color: '#ffffff', fontWeight: '700', fontSize: '11px' },
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: Math.min(26, 12 + Math.log2(count + 1) * 1.8),
+          fillColor: '#68457a', fillOpacity: 0.92, strokeColor: '#ffffff', strokeWeight: 2,
+        },
+      });
+      state.markers.push(marker);
+    });
+  }
+
   function renderMap(fit) {
     if (!state.map || !window.google) return;
     clearMap();
     const radius = Number($('heatRadius')?.value || 30);
-    const mapped = (state.filtered || []).filter(hasPoint);
+    const mapped = (state.mapRecords || []).filter(hasPoint);
     const bounds = new google.maps.LatLngBounds();
 
-    mapped.forEach(record => {
+    const aggregate = mapped.filter(record => record.count !== undefined);
+    const detail = mapped.filter(record => record.count === undefined);
+    aggregate.forEach(point => bounds.extend({ lat: Number(point.latitude), lng: Number(point.longitude) }));
+    renderDensityCircles(aggregate, radius);
+    renderAggregateMarkers(aggregate);
+
+    detail.forEach(record => {
       const pos = { lat: Number(record.latitude), lng: Number(record.longitude) };
       bounds.extend(pos);
       if ((state.mode === 'pins' || state.mode === 'both' || state.mode === 'clusters') && !venueTypes.has(record.recordType)) {
@@ -243,7 +261,7 @@
       });
     }
 
-    renderDensityCircles(mapped, radius);
+    renderDensityCircles(detail, radius);
 
     if (fit && mapped.length) {
       if (mapped.length === 1) state.map.setCenter(bounds.getCenter());
@@ -273,7 +291,7 @@
       </tr>`).join('');
   }
 
-  function renderVenueGroups() {
+  async function renderVenueGroups() {
     const section = $('heatVenueGroups');
     const body = $('heatVenueGroupRows');
     const selectedType = $('heatRecordTypeFilter')?.value || '';
@@ -282,13 +300,27 @@
       return;
     }
 
-    const rows = groupVenueRecords(state.filtered || [])
-      .sort((a, b) => b.services.size - a.services.size || a.name.localeCompare(b.name));
     $('heatVenueGroupsTitle').textContent = `${recordTypeLabel({ recordType: selectedType })} service totals`;
-    body.innerHTML = rows.length ? rows.map(group => `
-      <tr><td>${esc(group.name)}</td><td>${esc(group.city)}</td><td>${esc(group.province)}</td><td><strong>${group.services.size}</strong></td></tr>
-    `).join('') : '<tr><td colspan="4">No venue service records found.</td></tr>';
     section.hidden = false;
+    body.innerHTML = '<tr><td colspan="4">Loading venue totals...</td></tr>';
+    const url = new URL(ctx.venueGroupsUrl, window.location.origin);
+    filterParams().forEach((value, key) => url.searchParams.set(key, value));
+    try {
+      state.venueController?.abort();
+      state.venueController = new AbortController();
+      const response = await fetch(url.toString(), {
+        headers: { 'Accept': 'application/json' }, credentials: 'same-origin',
+        signal: state.venueController.signal,
+      });
+      if (!response.ok) throw new Error(`venue totals request failed (${response.status})`);
+      const payload = await response.json();
+      const rows = Array.isArray(payload.groups) ? payload.groups : [];
+      body.innerHTML = rows.length ? rows.map(group => `
+        <tr><td>${esc(group.name)}</td><td>${esc(group.city)}</td><td>${esc(group.province)}</td><td><strong>${Number(group.services || 0).toLocaleString()}</strong></td></tr>
+      `).join('') : '<tr><td colspan="4">No venue service records found.</td></tr>';
+    } catch (error) {
+      if (error.name !== 'AbortError') body.innerHTML = '<tr><td colspan="4">Venue totals could not be loaded.</td></tr>';
+    }
   }
 
   function applyFilters(fit) {
@@ -305,20 +337,50 @@
     }
   }
 
-  async function loadData(fit) {
+  function filterParams() {
+    const params = new URLSearchParams();
     const franchiseId = $('heatFranchiseFilter')?.value || '';
+    const query = ($('heatTownFilter')?.value || '').trim();
+    const province = $('heatProvinceFilter')?.value || '';
+    const recordType = $('heatRecordTypeFilter')?.value || '';
+    if (franchiseId) params.set('franchise_id', franchiseId);
+    if (query) params.set('q', query);
+    if (province) params.set('province', province);
+    if (recordType) params.set('record_type', recordType);
+    return params;
+  }
+
+  function fitSummaryBounds() {
+    const bounds = state.summary?.bounds;
+    if (!state.map || !bounds || [bounds.south, bounds.north, bounds.west, bounds.east].some(value => value == null)) return;
+    if (Number(bounds.south) === Number(bounds.north) && Number(bounds.west) === Number(bounds.east)) {
+      state.map.setCenter({ lat: Number(bounds.south), lng: Number(bounds.west) });
+      state.map.setZoom(14);
+      return;
+    }
+    state.map.fitBounds({
+      south: Number(bounds.south), north: Number(bounds.north),
+      west: Number(bounds.west), east: Number(bounds.east),
+    });
+  }
+
+  async function loadData(fit) {
     const url = new URL(ctx.dataUrl, window.location.origin);
-    if (franchiseId) url.searchParams.set('franchise_id', franchiseId);
+    filterParams().forEach((value, key) => url.searchParams.set(key, value));
+    url.searchParams.set('per_page', '250');
     const status = $('heatDataStatus');
     if (status) {
       status.className = 'alert';
       status.textContent = 'Loading Heat Map records...';
     }
     try {
+      state.dataController?.abort();
+      state.dataController = new AbortController();
       const res = await fetch(url.toString(), {
         headers: { 'Accept': 'application/json' },
         credentials: 'same-origin',
         cache: 'no-store',
+        signal: state.dataController.signal,
       });
       if (!res.ok) throw new Error(`Heat map data request failed (${res.status})`);
       const contentType = res.headers.get('content-type') || '';
@@ -326,15 +388,22 @@
       const data = await res.json();
       if (!data || !Array.isArray(data.records)) throw new Error('Heat map data response is incomplete');
       state.records = data.records;
-      applyFilters(fit);
+      state.summary = data.summary || {};
+      applyFilters(false);
+      if (fit) fitSummaryBounds();
+      scheduleViewportLoad(0);
       if (status) {
         status.className = 'alert success';
-        status.textContent = `${state.records.length} map location(s) loaded for the selected franchise. One spreadsheet service row can create separate Deceased, Next of Kin and venue locations.`;
+        const total = Number(state.summary.total || 0);
+        const shown = state.records.length;
+        status.textContent = `${total.toLocaleString()} map location(s) match. Showing ${shown.toLocaleString()} table row(s); the map loads only the visible area.`;
       }
       startAutomaticGeocoding();
     } catch (error) {
+      if (error.name === 'AbortError') return;
       console.error(error);
       state.records = [];
+      state.summary = {};
       applyFilters(false);
       const body = $('heatRows');
       if (body) body.innerHTML = '<tr><td colspan="8">Heat map data could not be loaded. Refresh the page and try again.</td></tr>';
@@ -343,6 +412,45 @@
         status.textContent = `Heat Map records could not be loaded: ${error.message || 'unknown error'}. Please refresh the page or contact Admin.`;
       }
     }
+  }
+
+  async function loadViewport() {
+    if (!state.map || !ctx.viewportUrl) return;
+    const bounds = state.map.getBounds();
+    if (!bounds) return;
+    const southWest = bounds.getSouthWest();
+    const northEast = bounds.getNorthEast();
+    const url = new URL(ctx.viewportUrl, window.location.origin);
+    filterParams().forEach((value, key) => url.searchParams.set(key, value));
+    url.searchParams.set('south', String(southWest.lat()));
+    url.searchParams.set('west', String(southWest.lng()));
+    url.searchParams.set('north', String(northEast.lat()));
+    url.searchParams.set('east', String(northEast.lng()));
+    url.searchParams.set('zoom', String(state.map.getZoom() || 5));
+    try {
+      state.viewportController?.abort();
+      state.viewportController = new AbortController();
+      const response = await fetch(url.toString(), {
+        headers: { 'Accept': 'application/json' }, credentials: 'same-origin',
+        signal: state.viewportController.signal,
+      });
+      if (!response.ok) throw new Error(`Map viewport request failed (${response.status})`);
+      const data = await response.json();
+      state.mapRecords = Array.isArray(data.points) ? data.points : [];
+      renderMap(false);
+      const status = $('heatDataStatus');
+      if (status && data.truncated) {
+        status.className = 'alert warning';
+        status.textContent += ' This view reached its safe display limit; zoom in to see more detail.';
+      }
+    } catch (error) {
+      if (error.name !== 'AbortError') console.error('Heat Map viewport failed', error);
+    }
+  }
+
+  function scheduleViewportLoad(delay = 250) {
+    clearTimeout(state.viewportTimer);
+    state.viewportTimer = setTimeout(loadViewport, delay);
   }
 
   function selectedFranchiseKey() {
@@ -384,8 +492,25 @@
     if (!ctx.canGeocode || !state.geocoder || state.geocodeRunning) return;
     if (manual) state.geocodeFailures.clear();
 
+    const franchiseId = selectedFranchiseKey();
+    if (!franchiseId || !ctx.unmappedUrl) return;
+    const unmappedUrl = new URL(ctx.unmappedUrl, window.location.origin);
+    filterParams().forEach((value, key) => unmappedUrl.searchParams.set(key, value));
+    unmappedUrl.searchParams.set('franchise_id', franchiseId);
+    unmappedUrl.searchParams.set('limit', '100');
+    let unmappedRecords = [];
+    try {
+      const response = await fetch(unmappedUrl.toString(), { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' });
+      if (!response.ok) throw new Error(`unmapped request failed (${response.status})`);
+      const payload = await response.json();
+      unmappedRecords = Array.isArray(payload.records) ? payload.records : [];
+    } catch (error) {
+      console.warn('Could not load unmapped Heat Map rows', error);
+      return;
+    }
+
     const addressGroups = new Map();
-    state.records.filter(record => !hasPoint(record) && fullAddress(record)).forEach(record => {
+    unmappedRecords.filter(record => fullAddress(record)).forEach(record => {
       const key = fullAddress(record).trim().toLowerCase();
       if (!key || state.geocodeFailures.has(key)) return;
       if (!addressGroups.has(key)) addressGroups.set(key, { address: fullAddress(record), records: [] });
@@ -443,11 +568,10 @@
       await new Promise(resolve => setTimeout(resolve, 220));
     }
     state.geocodeRunning = false;
-    applyFilters(true);
-    const addressless = state.records.filter(record => !hasPoint(record) && !fullAddress(record)).length;
+    await loadData(false);
     if (statusBox) {
-      statusBox.className = failedAddresses || addressless ? 'alert warning' : 'alert success';
-      statusBox.textContent = `Automatic mapping completed: ${mappedRecords} location(s) at ${mappedAddresses} unique address(es) mapped. ${failedAddresses} address(es) could not be matched; ${addressless} location(s) have no address to map.`;
+      statusBox.className = failedAddresses ? 'alert warning' : 'alert success';
+      statusBox.textContent = `Automatic mapping batch completed: ${mappedRecords} location(s) at ${mappedAddresses} unique address(es) mapped. ${failedAddresses} address(es) could not be matched.`;
     }
   }
 
@@ -463,21 +587,28 @@
     state.geocoder = new google.maps.Geocoder();
     state.hoverInfoWindow = new google.maps.InfoWindow();
     state.map.addListener('zoom_changed', updateDensityCircleRadii);
-    loadData(true);
+    state.map.addListener('idle', () => scheduleViewportLoad());
+    scheduleViewportLoad(0);
+    startAutomaticGeocoding();
   };
 
   document.addEventListener('DOMContentLoaded', function () {
-    $('heatTownFilter')?.addEventListener('input', () => applyFilters(false));
-    ['heatProvinceFilter', 'heatRecordTypeFilter'].forEach(id => $(id)?.addEventListener('change', () => applyFilters(false)));
+    let filterTimer = null;
+    $('heatTownFilter')?.addEventListener('input', () => {
+      clearTimeout(filterTimer);
+      filterTimer = setTimeout(() => loadData(true), 300);
+    });
+    ['heatProvinceFilter', 'heatRecordTypeFilter'].forEach(id => $(id)?.addEventListener('change', () => loadData(true)));
     $('heatRadius')?.addEventListener('input', () => renderMap(false));
     $('heatFranchiseFilter')?.addEventListener('change', () => loadData(true));
-    $('heatFitBoundsBtn')?.addEventListener('click', () => renderMap(true));
+    $('heatFitBoundsBtn')?.addEventListener('click', fitSummaryBounds);
     $('heatGeocodeBtn')?.addEventListener('click', () => geocodeMissing({ manual: true }));
     document.querySelectorAll('[data-heat-mode]').forEach(btn => btn.addEventListener('click', function () {
       state.mode = this.dataset.heatMode;
       document.querySelectorAll('[data-heat-mode]').forEach(b => b.classList.add('secondary'));
       this.classList.remove('secondary');
-      applyFilters(false);
+      renderMap(false);
+      updateStats();
     }));
     $('heatRows')?.addEventListener('click', function (event) {
       const btn = event.target.closest('[data-delete]');
@@ -485,6 +616,6 @@
     });
     // Records and filters must work even if Google Maps is unavailable or its
     // external script is slow. The Maps callback will fit/reload once ready.
-    loadData(false);
+    loadData(true);
   });
 })();

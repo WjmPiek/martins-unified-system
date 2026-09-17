@@ -388,9 +388,9 @@ def graphs_data():
     mode = scope["mode"]
     growth = scope["growth"]
 
-    # Graph pages are cache-only.  Never scan or rebuild analytics from a
-    # browser request: a cache miss must return immediately so navigation
-    # remains responsive while Admin/import work prepares the cache.
+    # Cache hits are a single indexed lookup. A miss uses the prepared
+    # performance_results table and one grouped query; raw monthly figures are
+    # never scanned from this browser request.
 
     if scope["is_combined_view"]:
         graph_data = graph_engine_payload_for_franchises(ids, metric_key, month, year, periods, mode, growth, allow_rebuild=True) if ids else None
@@ -398,13 +398,16 @@ def graphs_data():
         franchise_id = scope["selected_franchise_id"]
         graph_data = graph_engine_payload(franchise_id, metric_key, month, year, periods, mode, growth, allow_rebuild=True) if franchise_id else None
 
-    db.session.commit()
-    return jsonify({
+    if graph_data and graph_data.get("cache_status") == "rebuilt":
+        db.session.commit()
+    response = jsonify({
         "ok": True,
         "selected_label": scope["selected_label"],
         "selected_period_label": month_label(month, year),
         "graph_data": graph_data,
     })
+    response.headers["Cache-Control"] = "private, max-age=30, stale-while-revalidate=120"
+    return response
 
 
 @performance_bp.route("/decision-centre")
