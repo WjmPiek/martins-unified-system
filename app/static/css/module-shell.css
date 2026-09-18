@@ -23,3 +23,17 @@ html body .ms-sidebar.ms-sidebar{scrollbar-gutter:stable}html body .ms-sidebar>.
 @media(min-width:981px){html body .ms-topbar #sidebarToggle,html body .ms-main .mobile-app-header{display:none!important}}
 
 html body .ms-sidebar.ms-sidebar{scrollbar-width:thin!important;scrollbar-color:#a68ac8 #6b4ba0!important}html body .ms-sidebar.ms-sidebar::-webkit-scrollbar{width:8px!important}
+
+/* The main module uses a native details control for its mobile drawer. */
+@media(max-width:980px){
+ html body .app-menu.ms-sidebar:not([open]){width:44px!important;height:44px!important;min-height:0!important;padding:0!important;background:transparent!important;overflow:visible!important;box-shadow:none!important;scrollbar-gutter:auto!important}
+ html body .app-menu.ms-sidebar[open]{position:fixed!important;inset:0 auto 0 0!important;height:100dvh!important;max-height:100dvh!important;z-index:1100!important}
+ html body .app-menu.ms-sidebar>.menu-toggle{display:flex!important;flex-wrap:wrap!important;align-items:center!important;justify-content:center!important;gap:3px!important;width:40px!important;height:40px!important;padding:10px!important;background:#fff!important;border:1px solid #e1e6ef!important;border-radius:10px!important}
+ html body .app-menu.ms-sidebar>.menu-toggle span{display:block!important;width:7px!important;height:7px!important;background:#6b4ba0!important;border-radius:2px!important}
+ html body .app-menu.ms-sidebar[open]>.menu-toggle{margin-bottom:14px!important}
+ html body .app-menu.ms-sidebar~.ms-main .ms-topbar{padding-left:64px!important}
+}
+
+html body .ms-topbar .ms-topbar-brand>.page-title{display:block!important;visibility:visible!important;white-space:normal!important}
+
+
