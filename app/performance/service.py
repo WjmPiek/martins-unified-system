@@ -1575,6 +1575,7 @@ def _graph_period_values(franchise_ids, metric_key, month, year, periods):
             PerformanceResult.year,
             func.coalesce(func.sum(PerformanceResult.actual_value), 0).label("actual"),
             func.coalesce(func.sum(PerformanceResult.target_value), 0).label("target"),
+            func.count(func.distinct(PerformanceResult.franchise_id)).label("franchise_count"),
         )
         .filter(
             PerformanceResult.franchise_id.in_(franchise_ids),
@@ -1586,10 +1587,63 @@ def _graph_period_values(franchise_ids, metric_key, month, year, periods):
     )
     values = {
         (int(row.month), int(row.year)): {
-            "actual": to_decimal(row.actual), "target": to_decimal(row.target),
+            "actual": to_decimal(row.actual),
+            "target": to_decimal(row.target),
+            "franchise_count": int(row.franchise_count or 0),
         }
         for row in rows
     }
+
+    # Imports made before the analytics worker was introduced can have complete
+    # monthly figures but no PerformanceResult rows.  Do not hide that valid
+    # franchise data behind an "ask Admin to rebuild" message.  A cache miss is
+    # allowed to perform these two bounded, grouped fallbacks; subsequent views
+    # are served from PerformancePageCache.
+    incomplete_periods = {
+        period for period in required
+        if values.get(period, {}).get("franchise_count", 0) < len(franchise_ids)
+    }
+    if incomplete_periods:
+        actual_rows = (
+            db.session.query(
+                MonthlyFigure.month,
+                MonthlyFigure.year,
+                func.coalesce(func.sum(metric_field(metric_key)), 0).label("actual"),
+            )
+            .filter(
+                MonthlyFigure.franchise_id.in_(franchise_ids),
+                tuple_(MonthlyFigure.month, MonthlyFigure.year).in_(sorted(incomplete_periods)),
+            )
+            .group_by(MonthlyFigure.month, MonthlyFigure.year)
+            .all()
+        )
+        target_rows = (
+            db.session.query(
+                FranchiseTarget.month,
+                FranchiseTarget.year,
+                func.coalesce(func.sum(FranchiseTarget.target_value), 0).label("target"),
+            )
+            .filter(
+                FranchiseTarget.franchise_id.in_(franchise_ids),
+                FranchiseTarget.metric == metric_key,
+                tuple_(FranchiseTarget.month, FranchiseTarget.year).in_(sorted(incomplete_periods)),
+            )
+            .group_by(FranchiseTarget.month, FranchiseTarget.year)
+            .all()
+        )
+        raw_actuals = {
+            (int(row.month), int(row.year)): to_decimal(row.actual) for row in actual_rows
+        }
+        raw_targets = {
+            (int(row.month), int(row.year)): to_decimal(row.target) for row in target_rows
+        }
+        for period in incomplete_periods:
+            if period in raw_actuals or period in raw_targets:
+                values[period] = {
+                    "actual": raw_actuals.get(period, Decimal("0")),
+                    "target": raw_targets.get(period, Decimal("0")),
+                    "franchise_count": len(franchise_ids),
+                }
     return selected_periods, values
 
 
@@ -1758,23 +1812,122 @@ def movement_text(row):
     return 'Same'
 
 
+def _bulk_ytd_metric_totals(month, year, franchise_ids):
+    """Load all leaderboard KPIs for a YTD period in a handful of queries.
+
+    A complete prepared period uses PerformanceResult.  Missing or partial
+    caches fall back to grouped MonthlyFigure/FranchiseTarget totals, which is
+    both faster than the old month-by-month loop and prevents blank franchise
+    rankings after a successful import whose cache warm-up was interrupted.
+    """
+    franchise_ids = filter_active_franchise_ids(franchise_ids)
+    cache_key = ("bulk_ytd_metric_totals", int(month), int(year), _ids_key(franchise_ids))
+
+    def load():
+        totals = {
+            fid: {
+                metric: {"actual": Decimal("0"), "target": Decimal("0")}
+                for metric in PERFORMANCE_METRICS
+            }
+            for fid in franchise_ids
+        }
+        if not franchise_ids:
+            return totals
+
+        prepared_rows = (
+            db.session.query(
+                PerformanceResult.franchise_id,
+                PerformanceResult.metric,
+                func.coalesce(func.sum(PerformanceResult.actual_value), 0).label("actual"),
+                func.coalesce(func.sum(PerformanceResult.target_value), 0).label("target"),
+                func.count(func.distinct(PerformanceResult.month)).label("month_count"),
+            )
+            .filter(
+                PerformanceResult.franchise_id.in_(franchise_ids),
+                PerformanceResult.metric.in_(list(PERFORMANCE_METRICS)),
+                PerformanceResult.year == year,
+                PerformanceResult.month <= month,
+            )
+            .group_by(PerformanceResult.franchise_id, PerformanceResult.metric)
+            .all()
+        )
+        prepared = {
+            (int(row.franchise_id), row.metric): row
+            for row in prepared_rows
+            if int(row.month_count or 0) >= int(month)
+        }
+
+        missing = {
+            (fid, metric)
+            for fid in franchise_ids
+            for metric in PERFORMANCE_METRICS
+            if (fid, metric) not in prepared
+        }
+        for (fid, metric), row in prepared.items():
+            totals[fid][metric] = {
+                "actual": to_decimal(row.actual),
+                "target": to_decimal(row.target),
+            }
+
+        if missing:
+            columns = [MonthlyFigure.franchise_id]
+            for metric in PERFORMANCE_METRICS:
+                columns.append(func.coalesce(func.sum(metric_field(metric)), 0).label(metric))
+            actual_rows = (
+                db.session.query(*columns)
+                .filter(
+                    MonthlyFigure.franchise_id.in_(franchise_ids),
+                    MonthlyFigure.year == year,
+                    MonthlyFigure.month <= month,
+                )
+                .group_by(MonthlyFigure.franchise_id)
+                .all()
+            )
+            target_rows = (
+                db.session.query(
+                    FranchiseTarget.franchise_id,
+                    FranchiseTarget.metric,
+                    func.coalesce(func.sum(FranchiseTarget.target_value), 0).label("target"),
+                )
+                .filter(
+                    FranchiseTarget.franchise_id.in_(franchise_ids),
+                    FranchiseTarget.metric.in_(list(PERFORMANCE_METRICS)),
+                    FranchiseTarget.year == year,
+                    FranchiseTarget.month <= month,
+                )
+                .group_by(FranchiseTarget.franchise_id, FranchiseTarget.metric)
+                .all()
+            )
+            raw_actuals = {
+                (int(row.franchise_id), metric): to_decimal(getattr(row, metric))
+                for row in actual_rows
+                for metric in PERFORMANCE_METRICS
+            }
+            raw_targets = {
+                (int(row.franchise_id), row.metric): to_decimal(row.target)
+                for row in target_rows
+            }
+            for fid, metric in missing:
+                totals[fid][metric] = {
+                    "actual": raw_actuals.get((fid, metric), Decimal("0")),
+                    "target": raw_targets.get((fid, metric), Decimal("0")),
+                }
+        return totals
+
+    return _cached_value(cache_key, load)
+
+
 def _ytd_metric_rows(metric_key, month, year, franchise_ids, mode='growth_bracket', growth_percent=DEFAULT_GROWTH_PERCENT):
     """Rank franchises by year-to-date actuals against accumulated current-year targets."""
     franchise_ids = filter_active_franchise_ids(franchise_ids)
     franchises = {item.id: item for item in Franchise.query.filter(Franchise.id.in_(franchise_ids)).all()} if franchise_ids else {}
-    actual_totals = {fid: Decimal('0') for fid in franchise_ids}
-    target_totals = {fid: Decimal('0') for fid in franchise_ids}
-    for period_month in range(1, int(month) + 1):
-        actuals = period_actuals(period_month, year, franchise_ids, [metric_key])
-        targets = targets_for_period(period_month, year, franchise_ids, mode, growth_percent, [metric_key])
-        for fid in franchise_ids:
-            actual_totals[fid] += actuals.get(fid, {}).get(metric_key, Decimal('0'))
-            target_totals[fid] += targets.get(fid, {}).get(metric_key, Decimal('0'))
+    totals = _bulk_ytd_metric_totals(month, year, franchise_ids)
 
     rows = []
     for fid in franchise_ids:
-        actual = actual_totals.get(fid, Decimal('0'))
-        target = target_totals.get(fid, Decimal('0'))
+        metric_totals = totals.get(fid, {}).get(metric_key, {})
+        actual = metric_totals.get("actual", Decimal("0"))
+        target = metric_totals.get("target", Decimal("0"))
         score = percent(actual, target) if target > 0 else Decimal('0')
         rows.append({
             'franchise_id': fid,

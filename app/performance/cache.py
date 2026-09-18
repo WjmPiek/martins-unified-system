@@ -9,7 +9,7 @@ from typing import Iterable, Optional
 from app.extensions import db
 from app.models import PerformancePageCache
 
-CACHE_VERSION = "phase5"
+CACHE_VERSION = "phase6"
 
 
 def _now():
