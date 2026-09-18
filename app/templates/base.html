@@ -28,7 +28,7 @@
 <link rel="icon" type="image/x-icon" href="/static/brand/favicon.ico?v=20260918-brand" sizes="any">
 <link rel="icon" type="image/png" href="/static/brand/icon-192.png?v=20260918-brand" sizes="192x192">
 <link rel="apple-touch-icon" href="/static/brand/icon-180.png?v=20260918-brand" sizes="180x180">
-<link rel="stylesheet" href="/static/css/module-shell.css?v=20260918-stable-shell">
+<link rel="stylesheet" href="/static/css/module-shell.css?v=20260918-nav-parity">
 </head>
 {% set shell_role_names = current_user.roles|map(attribute='name')|list if current_user.is_authenticated else [] %}
 {% set shell_is_franchise_user = 'Franchise User' in shell_role_names or 'Franchise Manager' in shell_role_names or 'Franchise Employee' in shell_role_names or 'Franchise Agent' in shell_role_names or 'Manager' in shell_role_names or 'Employee' in shell_role_names or 'Agent' in shell_role_names or 'Read Only User' in shell_role_names %}
@@ -60,29 +60,29 @@
                         <div class="franchise-context-card"><small>Your franchise</small><strong>{{ selected_franchise.business_name if selected_franchise else 'My Business' }}</strong></div>
 
                         <div class="mobile-franchise-menu" aria-label="Franchise mobile menu">
-                            {% if current_user.has_permission('performance:view') %}<a href="{{ url_for('performance.graphs') }}"><span>â—’</span><strong>Performance Graph</strong></a><a href="{{ url_for('performance.index') }}"><span>#</span><strong>Leaderboard</strong></a>{% endif %}
+                            {% if current_user.has_permission('performance:view') %}<a href="{{ url_for('performance.graphs') }}"><span>◒</span><strong>Performance Graph</strong></a><a href="{{ url_for('performance.index') }}"><span>#</span><strong>Leaderboard</strong></a>{% endif %}
                             {% if current_user.has_permission('royalties:view') %}<a href="{{ url_for('royalties.index') }}"><span>R</span><strong>Royalty</strong></a>{% endif %}
-                            {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}"><span>â—Ž</span><strong>Heat Map</strong></a>{% endif %}
+                            {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}"><span>◎</span><strong>Heat Map</strong></a>{% endif %}
                             {% if current_user.has_permission('insurance_app:view') %}<a href="{{ url_for('insurance_launch.launch') }}"><span>I</span><strong>Insurance Applications</strong></a>{% endif %}
-                            {% if current_user.has_permission('manuals:view') %}<a href="{{ url_for('manuals.index') }}"><span>â‰¡</span><strong>Manuals</strong></a>{% endif %}
+                            {% if current_user.has_permission('manuals:view') %}<a href="{{ url_for('manuals.index') }}"><span>≡</span><strong>Manuals</strong></a>{% endif %}
                         </div>
 
-                        <details class="nav-section nav-domain" open><summary><span class="nav-icon">â—’</span><span><strong>Graphs &amp; Analytics</strong><small>Your performance and position</small></span></summary><div class="nav-subtabs">
+                        <details class="nav-section nav-domain" open><summary><span class="nav-icon">G</span><span><strong>Graphs &amp; Analytics</strong><small>Your performance and position</small></span></summary><div class="nav-subtabs">
                             {% if current_user.has_permission('performance:view') %}<a href="{{ url_for('performance.graphs') }}">Performance Graph <small>Actual vs target, prior year and forecast</small></a><a href="{{ url_for('performance.index') }}">Leaderboard <small>See your franchise's ranking</small></a>{% endif %}
                         </div></details>
 
-                        <details class="nav-section nav-domain" open><summary><span class="nav-icon">R</span><span><strong>Monthly Figures</strong><small>Figures and royalty reporting</small></span></summary><div class="nav-subtabs">
+                        <details class="nav-section nav-domain" open><summary><span class="nav-icon">M</span><span><strong>Monthly Figures</strong><small>Figures and royalty reporting</small></span></summary><div class="nav-subtabs">
                             <a href="{{ url_for('monthly.index') }}">Monthly Figures <small>View your monthly business figures</small></a>
                             <a href="{{ url_for('royalties.index') }}">Royalty <small>View your calculated royalty figures</small></a>
                         </div></details>
 
-                        <details class="nav-section nav-domain" open><summary><span class="nav-icon">â‰¡</span><span><strong>Franchise Operations</strong><small>People and branch tools</small></span></summary><div class="nav-subtabs">
+                        <details class="nav-section nav-domain" open><summary><span class="nav-icon">F</span><span><strong>Franchise Operations</strong><small>People and branch tools</small></span></summary><div class="nav-subtabs">
                             <a href="{{ url_for('franchise.details') }}">Franchise Details <small>Your branch information</small></a>
                             <a href="{{ url_for('franchise.employees') }}">Employees <small>Your franchise team</small></a>
                         </div></details>
 
                         {% if current_user.has_permission('heat_map:view') or current_user.has_permission('attendance:view') or current_user.has_permission('insurance_app:view') or current_user.has_permission('manuals:view') %}
-                        <details class="nav-section nav-domain" open><summary><span class="nav-icon">+</span><span><strong>Activated Modules</strong><small>Additional franchise tools</small></span></summary><div class="nav-subtabs">
+                        <details class="nav-section nav-domain" open><summary><span class="nav-icon">A</span><span><strong>Activated Modules</strong><small>Additional franchise tools</small></span></summary><div class="nav-subtabs">
                             {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}">Heat Map <small>View franchise coverage and density</small></a>{% endif %}
                             {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance_launch.launch') }}">Attendance <small>Staff attendance workspace</small></a>{% endif %}
                             {% if current_user.has_permission('insurance_app:view') %}<a href="{{ url_for('insurance_launch.launch') }}">Insurance Applications <small>Open the online application system</small></a>{% endif %}
@@ -122,13 +122,13 @@
                     {% else %}
                         <div class="nav-primary-link">
                             {% if current_user.has_permission('dashboard:view') and not is_franchise_user %}
-                                <a href="{{ url_for('dashboard.main_dashboard') }}"><span class="nav-icon">âŒ‚</span><span><strong>Business Overview</strong><small>Company performance at a glance</small></span></a>
+                                <a href="{{ url_for('dashboard.main_dashboard') }}"><span class="nav-icon">B</span><span><strong>Business Overview</strong><small>Company performance at a glance</small></span></a>
                             {% endif %}
                         </div>
 
                         {% if current_user.has_permission('performance:view') %}
                         <details class="nav-section nav-domain" open>
-                            <summary><span class="nav-icon">â—’</span><span><strong>Graphs & Analytics</strong><small>Visual trends and comparisons</small></span></summary>
+                            <summary><span class="nav-icon">G</span><span><strong>Graphs & Analytics</strong><small>Visual trends and comparisons</small></span></summary>
                             <div class="nav-subtabs">
                                 <a href="{{ url_for('performance.graphs') }}">Performance Graphs <small>Actual vs target, prior year and forecast</small></a>
                                 <a href="{{ url_for('performance.executive') }}">Executive Analytics <small>High-level trends for decision making</small></a>
@@ -160,7 +160,7 @@
 
                                                 {% if current_user.has_permission('insurance_claims:view') %}
                         <details class="nav-section nav-domain" open>
-                            <summary><span class="nav-icon">C</span><span><strong>Insurance Claims</strong><small>Premiums, claims and risk analysis</small></span></summary>
+                            <summary><span class="nav-icon">I</span><span><strong>Insurance Claims</strong><small>Premiums, claims and risk analysis</small></span></summary>
                             <div class="nav-subtabs">
                                 <a href="{{ url_for('claims_launch.launch') }}">Open Claims Workspace <small>Full claims dashboard and operations</small></a>
                             </div>
@@ -176,7 +176,7 @@
                         {% endif %}
                         {% if current_user.has_permission('heat_map:view') %}
                         <details class="nav-section nav-domain" open>
-                            <summary><span class="nav-icon">â—Ž</span><span><strong>Heat Map</strong><small>Client coverage and density</small></span></summary>
+                            <summary><span class="nav-icon">H</span><span><strong>Heat Map</strong><small>Client coverage and density</small></span></summary>
                             <div class="nav-subtabs">
                                 <a href="{{ url_for('heatmap.index') }}">Open Heat Map <small>Explore client locations and franchise coverage</small></a>
                             </div>
@@ -200,7 +200,7 @@
                         {% endif %}
                         {% if current_user.has_permission('franchise_management:view') and (is_admin_user or is_finance_user) %}
                         <details class="nav-section nav-domain" open>
-                            <summary><span class="nav-icon">â—Ž</span><span><strong>Franchise Intelligence</strong><small>Health, growth and risk</small></span></summary>
+                            <summary><span class="nav-icon">F</span><span><strong>Franchise Intelligence</strong><small>Health, growth and risk</small></span></summary>
                             <div class="nav-subtabs">
                                 <a href="{{ url_for('admin.insights_dashboard', tab='executive') }}">Executive Summary <small>Plain-language business summary</small></a>
                                 <a href="{{ url_for('admin.insights_dashboard', tab='franchise') }}">Franchise Explanations <small>What changed and why</small></a>
@@ -215,7 +215,7 @@
                         </details>
 
                         <details class="nav-section nav-domain">
-                            <summary><span class="nav-icon">â–¦</span><span><strong>Executive Dashboard</strong><small>Focused management scenarios</small></span></summary>
+                            <summary><span class="nav-icon">E</span><span><strong>Executive Dashboard</strong><small>Focused management scenarios</small></span></summary>
                             <div class="nav-subtabs">
                                 <a href="{{ url_for('admin.executive_dashboard', section='executive-summary') }}">Executive Summary</a>
                                 <a href="{{ url_for('admin.executive_dashboard', section='executive-alerts') }}">Executive Alerts</a>
@@ -228,7 +228,7 @@
 
                         {% if current_user.has_permission('monthly_figures:view') or current_user.has_permission('franchise_details:view') %}
                         <details class="nav-section nav-domain">
-                            <summary><span class="nav-icon">â‰¡</span><span><strong>Franchise Operations</strong><small>Details, figures and people</small></span></summary>
+                            <summary><span class="nav-icon">F</span><span><strong>Franchise Operations</strong><small>Details, figures and people</small></span></summary>
                             <div class="nav-subtabs">
                                 {% if current_user.has_permission('franchise_details:view') %}<a href="{{ url_for('franchise.details') }}">Franchise Details</a>{% endif %}
                                 {% if current_user.has_permission('franchise_employees:view') or current_user.has_permission('franchise_employees:manage') %}<a href="{{ url_for('franchise.employees') }}">Employees</a>{% endif %}
@@ -240,7 +240,7 @@
 
                         {% if current_user.has_permission('users:view') or current_user.has_permission('user_roles:view') or is_admin_user or is_finance_user %}
                         <details class="nav-section nav-domain">
-                            <summary><span class="nav-icon">âš™</span><span><strong>Administration</strong><small>Users, imports and system control</small></span></summary>
+                            <summary><span class="nav-icon">A</span><span><strong>Administration</strong><small>Users, imports and system control</small></span></summary>
                             <div class="nav-subtabs">
                                 {% if current_user.has_permission('users:view') %}<a href="{{ url_for('admin.users') }}">Users</a><a href="{{ url_for('admin.franchise_users') }}">Franchise Users</a><a href="{{ url_for('admin.franchise_employees') }}">Employees</a>{% endif %}
                                 {% if current_user.has_permission('user_roles:view') %}<a href="{{ url_for('admin.roles') }}">Roles & Permissions</a>{% endif %}
@@ -317,7 +317,7 @@
                             <strong data-live-title>System updated</strong>
                             <span data-live-message>New information is available.</span>
                         </div>
-                        <button type="button" class="live-close" data-live-close aria-label="Close notification">Ã—</button>
+                        <button type="button" class="live-close" data-live-close aria-label="Close notification">×</button>
                     </div>
                     {% with messages = get_flashed_messages(with_categories=true) %}
                         {% if messages %}
