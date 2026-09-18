@@ -37,3 +37,7 @@ html body .ms-sidebar.ms-sidebar{scrollbar-width:thin!important;scrollbar-color:
 html body .ms-topbar .ms-topbar-brand>.page-title{display:block!important;visibility:visible!important;white-space:normal!important}
 
 
+/* Paint the navigation as one stable region; never defer individual logos/items. */
+html body .ms-sidebar,html body .ms-sidebar *{content-visibility:visible!important;animation:none!important;transition:none!important}
+html body .ms-sidebar .ms-brand img{contain:none!important}
+@media(min-width:981px){html body .ms-sidebar.ms-sidebar{max-width:260px!important;flex:0 0 260px!important}}
