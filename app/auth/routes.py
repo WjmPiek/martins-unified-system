@@ -88,7 +88,7 @@ def register():
 
         franchise = Franchise.query.order_by(Franchise.id.asc()).first()
         if not franchise:
-            franchise = Franchise(business_name="Martins Funerals Franchise")
+            franchise = Franchise(business_name="Martin's Funerals Franchise")
             db.session.add(franchise)
             db.session.flush()
         user.franchise_id = franchise.id

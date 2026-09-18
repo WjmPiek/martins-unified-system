@@ -180,7 +180,7 @@ def _try_logo(story, styles, max_width=48 * mm, max_height=24 * mm):
         except Exception:
             pass
 
-    story.append(_p("Martins Funeral System", styles["CoverSubtitle"]))
+    story.append(_p("Martin's Funerals", styles["CoverSubtitle"]))
     story.append(Spacer(1, 5 * mm))
 
 
@@ -253,7 +253,7 @@ def _info_table(franchise, generated_by, styles, available_width):
 
 def add_cover_page(story, report_title, franchise, generated_by, styles, available_width):
     _try_logo(story, styles)
-    story.append(_p("MARTINS FUNERAL SYSTEM", styles["CoverSubtitle"]))
+    story.append(_p("MARTIN'S FUNERALS", styles["CoverSubtitle"]))
     story.append(_p(report_title.upper(), styles["CoverTitle"]))
     story.append(_p(getattr(franchise, "business_name", "") or "Franchise Name", styles["CoverSubtitle"]))
     story.append(Spacer(1, 6 * mm))

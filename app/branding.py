@@ -1,7 +1,7 @@
 """Shared Martins branding helpers for pages, PDF reports and Excel exports."""
 from pathlib import Path
 
-COMPANY_NAME = "Martins Funeral System"
+COMPANY_NAME = "Martin's Funerals"
 TAGLINE = "Leaders in funeral industry"
 BRAND_PURPLE = "5f4598"
 BRAND_LIGHT_PURPLE = "a88ec5"

@@ -1,4 +1,4 @@
-"""Enterprise event bus for Martins Funeral System.
+"""Enterprise event bus for Martin's Funerals.
 
 The event bus is intentionally database-backed instead of in-memory so events,
 processing state and errors survive Render restarts.  Phase 8 uses this as the
