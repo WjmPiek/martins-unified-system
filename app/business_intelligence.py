@@ -1,4 +1,4 @@
-"""Enterprise Business Intelligence layer for Martins Funeral System.
+"""Enterprise Business Intelligence layer for Martin's Funerals.
 
 Phase 11 reads the existing monthly figures, royalty snapshots and operational
 state to produce executive health scores and human-readable insights.  It does

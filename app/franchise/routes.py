@@ -143,7 +143,7 @@ def get_or_create_franchise():
     # Middelburg selection displaying another franchise user's details.
     if current_user.is_franchise_scoped_user():
         abort(403)
-    franchise = Franchise(business_name="Martins Funerals Franchise")
+    franchise = Franchise(business_name="Martin's Funerals Franchise")
     db.session.add(franchise)
     db.session.commit()
     return franchise

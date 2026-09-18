@@ -1,6 +1,6 @@
 """Enterprise Insights and Explanation Engine.
 
-Phase 12 converts trusted Martins Funeral System data into plain-language
+Phase 12 converts trusted Martin's Funerals data into plain-language
 explanations.  It is read/explain only and does not alter royalty, import,
 target or leaderboard calculations.
 """

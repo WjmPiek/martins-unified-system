@@ -39,7 +39,7 @@ def _send_email(franchise, recipients, days_left):
     body = f"""
 Good day,
 
-This is an automated reminder from the Martins Funerals System.
+This is an automated reminder from the Martin's Funerals System.
 
 The franchise agreement for {franchise.business_name} expires in {days_left} days.
 
@@ -51,7 +51,7 @@ Office number: {franchise.office_number or 'Not captured'}
 Please review the agreement and take the required action.
 
 Kind regards,
-Martins Funerals System
+Martin's Funerals System
 """.strip()
     message = Message(subject=subject, recipients=recipients, body=body, sender=current_app.config.get("MAIL_DEFAULT_SENDER"))
     mail.send(message)

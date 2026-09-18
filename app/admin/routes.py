@@ -35,9 +35,9 @@ FRANCHISE_REQUIRED_MODULES = (
 )
 
 ROLE_HELP_TEXT = {
-    "Finance Manager": "Martins Funerals South Africa user. Sees the whole financial system and is not linked to one franchise.",
-    "Finance Assistant": "Martins Funerals South Africa user. Finance support access and is not linked to one franchise.",
-    "Regional Manager": "Martins Funerals South Africa user. Must be linked to the franchises/region they manage.",
+    "Finance Manager": "Martin's Funerals South Africa user. Sees the whole financial system and is not linked to one franchise.",
+    "Finance Assistant": "Martin's Funerals South Africa user. Finance support access and is not linked to one franchise.",
+    "Regional Manager": "Martin's Funerals South Africa user. Must be linked to the franchises/region they manage.",
     "Franchise User": "Franchise owner/user. Must be linked to the franchise(s) they own or operate.",
 }
 FINANCE_ADMIN_USERS = {
@@ -51,8 +51,8 @@ FINANCE_ADMIN_USERS = {
 def ensure_user_hierarchy_roles():
     """Ensure the mother-company and franchise-level roles exist for the create-user screens."""
     descriptions = {
-        "Finance Manager": "Martins Funerals South Africa finance manager",
-        "Finance Assistant": "Martins Funerals South Africa finance assistant",
+        "Finance Manager": "Martin's Funerals South Africa finance manager",
+        "Finance Assistant": "Martin's Funerals South Africa finance assistant",
         "Regional Manager": "Martins regional manager linked to selected franchises",
         "Franchise User": "Franchise owner/user linked to selected franchise data",
         "Franchise Manager": "Manager created by a franchise user",
@@ -2005,7 +2005,7 @@ def import_contact_list():
     if request.method == "POST":
         uploaded_file = request.files.get("excel_file")
         if not uploaded_file or uploaded_file.filename == "":
-            flash("Please upload the Martins Funerals contact list Excel file.", "danger")
+            flash("Please upload the Martin's Funerals contact list Excel file.", "danger")
             return redirect(url_for("admin.import_contact_list"))
         try:
             from openpyxl import load_workbook
@@ -3174,7 +3174,7 @@ def assign_user_franchises(user_id):
     if is_admin_side_user(user):
         user.assigned_franchises = []
         db.session.commit()
-        flash("Martins Funerals South Africa/admin-side users are not linked to franchises here.", "warning")
+        flash("Martin's Funerals South Africa/admin-side users are not linked to franchises here.", "warning")
         return redirect(url_for("admin.users"))
 
     franchise_ids = [int(item) for item in request.form.getlist("franchise_ids")]
@@ -3192,7 +3192,7 @@ def clean_finance_admin_users():
     changed = tidy_finance_admin_users()
     log_action("Users", "Cleaned finance/admin-side users", f"Changes: {changed}")
     db.session.commit()
-    flash("Renette, Lowhaan and Deon were cleaned as Martins Funerals South Africa/admin-side users with no franchise links.", "success")
+    flash("Renette, Lowhaan and Deon were cleaned as Martin's Funerals South Africa/admin-side users with no franchise links.", "success")
     return redirect(url_for("admin.users"))
 
 @admin_bp.route("/users/clear-franchise-user-links", methods=["POST"])

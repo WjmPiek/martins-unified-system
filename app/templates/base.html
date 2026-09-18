@@ -18,13 +18,16 @@
     <meta name="twitter:title" content="Martins System">
     <meta name="twitter:image" content="{{ url_for('static', filename='img/app-icon-512.png', _external=True) }}">
     <link rel="manifest" href="{{ asset_url('site.webmanifest') }}">
-    <link rel="icon" href="{{ asset_url('img/favicon.ico') }}" sizes="any">
-    <link rel="icon" type="image/png" sizes="192x192" href="{{ asset_url('img/app-icon-192.png') }}">
-    <link rel="apple-touch-icon" href="{{ asset_url('img/app-icon-180.png') }}">
+
+
+
     <link rel="preload" href="{{ brand_logo_url }}" as="image" fetchpriority="high">
     <link rel="stylesheet" href="{{ asset_url('css/styles.css') }}">
     <link rel="stylesheet" href="{{ asset_url('css/martins-theme.css') }}">
     <link rel="stylesheet" href="{{ url_for('platform_theme') }}">
+<link rel="icon" type="image/x-icon" href="/static/brand/favicon.ico?v=20260918-brand" sizes="any">
+<link rel="icon" type="image/png" href="/static/brand/icon-192.png?v=20260918-brand" sizes="192x192">
+<link rel="apple-touch-icon" href="/static/brand/icon-180.png?v=20260918-brand" sizes="180x180">
 </head>
 {% set shell_role_names = current_user.roles|map(attribute='name')|list if current_user.is_authenticated else [] %}
 {% set shell_is_franchise_user = 'Franchise User' in shell_role_names or 'Franchise Manager' in shell_role_names or 'Franchise Employee' in shell_role_names or 'Franchise Agent' in shell_role_names or 'Manager' in shell_role_names or 'Employee' in shell_role_names or 'Agent' in shell_role_names or 'Read Only User' in shell_role_names %}
@@ -47,8 +50,8 @@
                     {% set pure_franchise_portal = shell_pure_franchise_portal %}
 
                     <a class="sidebar-logo" href="{{ url_for('performance.graphs') if current_user.has_permission('performance:view') else url_for('dashboard.index') }}">
-                        <img src="{{ brand_logo_url }}" alt="Martins Funerals logo" width="180" height="81" loading="eager" decoding="async" fetchpriority="high">
-                        <span><strong>Martins System</strong><small>Martins Funeral System</small></span>
+                        <img src="{{ brand_logo_url }}" alt="Martin's Funerals logo" width="180" height="81" loading="eager" decoding="async" fetchpriority="high">
+                        <span><strong>Martins System</strong><small>Martin's Funerals</small></span>
                     </a>
 
                     {# Franchise users share the main UI but only see their scoped core and activated modules. #}
@@ -254,7 +257,7 @@
             <div class="main-panel">
                 <header class="topbar">
                     <div class="topbar-brand">
-                        <img class="topbar-logo" src="{{ brand_logo_url }}" alt="Martins Funerals logo" width="210" height="96" loading="eager" decoding="async" fetchpriority="high">
+                        <img class="topbar-logo" src="{{ brand_logo_url }}" alt="Martin's Funerals logo" width="210" height="96" loading="eager" decoding="async" fetchpriority="high">
                         <div class="page-title">
                             {% if pure_franchise_portal %}
                                 Martins System <small class="selected-franchise-label">{{ selected_franchise.business_name if selected_franchise else 'My Business' }}</small>
