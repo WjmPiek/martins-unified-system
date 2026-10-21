@@ -18,7 +18,7 @@
 <div class="section-header"><div>
   <h1>Territory &amp; Valuation</h1>
   <p class="muted" id="territory-scenario-heading">{{ 'Prospective territory: ' + payload.prospect.name if payload.get('scenario_mode')=='prospective' else 'Franchise holder: ' + franchise.business_name }} · Planning revision {{ version }} · Draft for review</p>
-</div><a class="btn" href="{{ url_for('franchise.details', franchise_id=franchise.id) }}">Franchise Details</a></div>
+</div><div class="franchise-header-actions"><a class="btn" href="{{ url_for('franchise.territory_index', choose=1) }}">Choose franchise</a><a class="btn" href="{{ url_for('franchise.details', franchise_id=franchise.id) }}">Franchise Details</a></div></div>
 {% if config.get('TERRITORY_PREVIEW') %}<p>Local test preview: financial records and agreement figures are invented for testing. Public research findings retain their real sources. This is not a valuation of an actual franchise holder.</p>{% endif %}
 <div class="form-section-card">
   <h2>Territory boundary</h2>
