@@ -9,7 +9,21 @@ def suggested_inputs():
     return {**DEFAULTS,'market_share':5,'demand_basis':'territory','recorded_monthly_services':0,
         'expense_mode':'percentage','expense_percent':70,'salary_in_fixed':False,'fixed_cost':35000,
         'policy_receipts':0,'policy_payover':0,'policy_commission':0,'policy_direct_cost':0,'other_sales':0,
-        'fee_method':'commercial','commercial_category':'standard','territory_fee':150000,'confirmed':False}
+        'fee_method':'commercial','commercial_category':'standard','territory_fee':150000,'tax_percent':27,'confirmed':False}
+
+
+RUNNING_FIELDS = ('burial_cost','cremation_cost','policy_direct_cost','expense_mode','expense_percent','fixed_cost','owner_salary','reserve','annual_depreciation',
+    'annual_amortisation','annual_interest','annual_finance','annual_capex','annual_working','tax_percent',
+    'volume_growth','price_growth','cost_growth','target_margin','safety_buffer','discount_percent','territory_amortisation_months')
+
+
+def running_assumptions(raw=None):
+    from app.franchise.territory_finance import validate_inputs
+    if raw is None: raw = {}
+    if not isinstance(raw,dict) or set(raw)-set(RUNNING_FIELDS): raise ValueError('Invalid running-concern assumptions')
+    defaults={**suggested_inputs(),'volume_growth':0,'price_growth':0,'cost_growth':0}
+    validated=validate_inputs({**defaults,**raw})
+    return {key:validated[key] for key in RUNNING_FIELDS}
 
 
 def assumption_ledger(payload,area,research=None):
@@ -32,6 +46,9 @@ def assumption_ledger(payload,area,research=None):
             row['basis']='R0 placeholder: no confirmed policy book or other sales for this prospective business. No holder receipts were imported.'
         elif key=='market_share' and not edited:row['basis']='Illustrative 5% capture assumption for a new operator; not measured local market share.'
         elif key=='expense_percent' and not edited:row['basis']='Owner-requested 70% total operating-expense assumption, including monthly royalties and owner salary.'
+        elif key=='tax_percent':
+            row.update(source='https://www.sars.gov.za/tax-rates/income-tax/companies-trusts-and-small-business-corporations-sbc/',
+                basis='Editable flat-rate tax assumption. The SARS standard company rate checked 21 October 2026 is 27% for assessment years ending 1 April 2026–31 March 2027. Entity type, SBC/turnover-tax eligibility, taxable-profit adjustments and future rates are not verified; confirm the entered rate.')
         elif key in {'burial_price','cremation_price'}:
             service='burial' if key=='burial_price' else 'cremation'
             selected=(research or {}).get('selected_service_prices',{}).get(service)
@@ -47,7 +64,7 @@ def assumption_ledger(payload,area,research=None):
         note='Area research and explicitly labelled assumptions only. Existing-holder income, policies, service prices, activity and contract terms are not used.')
 
 
-def running_concern_summary(actuals,business_name=None,franchise=None):
+def running_concern_summary(actuals,business_name=None,franchise=None,assumptions=None):
     count=actuals['observed_months'];totals=actuals['totals']
     def value(key):return Decimal(str(totals.get(key,0)))
     receipts=sum(value(key) for key in ['funeral_receipts','society_receipts','cash_sales','tombstone_receipts','obo_service_receipts'])
@@ -61,7 +78,7 @@ def running_concern_summary(actuals,business_name=None,franchise=None):
         from app.franchise.territory_finance import calculate,serializable
         inputs={**suggested_inputs(),**actuals['proposed_inputs'],
             'demand_basis':'franchise_history','setup':0,'working_capital':0,'joining_fee':0,
-            'volume_growth':0,'price_growth':0,'cost_growth':0,'ramp_months':0,
+            **running_assumptions(assumptions),'ramp_months':0,
             'fee_method':'fair_territory','territory_fee':0,'confirmed':False}
         result=calculate(franchise,inputs,{}, {})
         fair=result['profit_margin_fee']['fair_fee']
@@ -71,5 +88,5 @@ def running_concern_summary(actuals,business_name=None,franchise=None):
         for scenario in ('expected','downside'):result[scenario].pop('months',None)
         summary['valuation']=serializable(dict(inputs=inputs,fee=result['profit_margin_fee'],
             years=result['expected']['years'],royalty_policy=result['royalty_policy'],calculation=result))
-        summary['valuation_note']='Provisional territory fee based on recorded activity and receipts, with 70% total operating expenses including royalties, R25,000 monthly owner salary coverage and R5,000 monthly cash reserve. No growth or additional setup investment assumed; 60-month zero-interest funding. Existing agreement royalty rules apply. Actual operating profit is not recorded. This is not a business or asset sale valuation.'
+        summary['valuation_note']='Provisional territory fee based on recorded activity and receipts, with separately entered running-concern cost, growth, depreciation, amortisation, borrowing-interest and tax assumptions. The 70% cash operating-expense default includes royalties and owner salary; growth defaults to zero and the editable flat-rate tax default is 27% (standard company planning assumption, not verified entity tax). No additional setup investment assumed; 60-month zero-interest territory funding. Existing agreement royalty rules apply. Actual operating profit is not recorded; net profit is modelled, not an approved accounting result. This is not a business or asset sale valuation.'
     return summary

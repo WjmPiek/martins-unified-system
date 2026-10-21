@@ -70,7 +70,7 @@ def test_running_comparison_cannot_change_prospective_forecast_fees_or_scores(ap
     assert running is not None
     assert running['inputs']['demand_basis']=='franchise_history'
     assert running['inputs']['recorded_monthly_services']==5
-    assert running['inputs']['setup']==0 and running['inputs']['expense_percent']==70
+    assert running['inputs']['setup']==0 and Decimal(running['inputs']['expense_percent'])==70
     assert len(running['years'])==5 and 'fair_fee' in running['fee']
     assert 'Actual operating profit is not recorded' in after['running_concern']['valuation_note']
     assert Decimal(after['running_concern']['monthly_business_income'])==15200

@@ -5,7 +5,7 @@ from app.franchise.territory_finance import profit_margin_fee, calculate, valida
 
 
 def test_each_annual_margin_is_applied_to_that_years_profit_not_turnover():
-    rows=[dict(year=i+1,revenue=1000000,operating=p) for i,p in enumerate([200000,300000,-100000,0,100000])]
+    rows=[dict(year=i+1,revenue=1000000,net_profit=p) for i,p in enumerate([200000,300000,-100000,0,100000])]
     result=profit_margin_fee(rows)
     assert [r['fee_contribution'] for r in result['years']]==[40000,90000,0,0,10000]
     assert result['total']==140000
@@ -15,7 +15,7 @@ def test_each_annual_margin_is_applied_to_that_years_profit_not_turnover():
 
 
 def test_zero_turnover_does_not_divide_or_square_a_loss_into_a_positive_fee():
-    result=profit_margin_fee([dict(year=1,revenue=0,operating=-3000),dict(year=2,revenue=0,operating=1000)])
+    result=profit_margin_fee([dict(year=1,revenue=0,net_profit=-3000),dict(year=2,revenue=0,net_profit=1000)])
     assert result['total']==0
     assert all(r['margin_percent'] is None for r in result['years'])
 
@@ -29,7 +29,7 @@ def test_growth_royalties_and_fee_repayments_have_consistent_profit_basis(franch
     assert fee['selected']
     assert fee['total']==sum(r['fee_contribution'] for r in fee['years'])
     for actual,year in zip(fee['years'],result['expected']['years']):
-        assert actual['turnover']==year['revenue'] and actual['profit']==year['operating']
+        assert actual['turnover']==year['revenue'] and actual['profit']==year['net_profit']
         assert actual['fee_contribution']==(actual['profit']*actual['profit']/actual['turnover']).quantize(Decimal('0.01'))
     assert fee['years'][1]['turnover_growth_percent']>0
     changed=calculate(franchise,{**data,'territory_fee':300000},scores,evidence)
@@ -54,7 +54,7 @@ def test_optional_method_survives_save_export_and_print_without_approving_price(
     report=client.get(base+'/report?layout=print').get_data(as_text=True)
     assert 'Five-year profit-margin valuation' in report and 'Fee contribution' in report
     assert 'not verified as a FASA-prescribed formula' in report
-    assert 'before tax, reserves, financing and territory repayments' in report
+    assert 'Net profit after tax' in report and 'before territory principal' in report
     page=client.get(base).get_data(as_text=True)
     assert 'Optional Territory Fee — valuation and affordability' in page
 

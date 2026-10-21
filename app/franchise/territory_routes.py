@@ -9,7 +9,7 @@ from sqlalchemy.exc import IntegrityError
 from app.audit import log_action
 from app.extensions import db
 from app.franchise.routes import franchise_bp
-from app.franchise.territory_finance import DEFAULTS, WEIGHTS, calculate, serializable, scorecard, validate_inputs
+from app.franchise.territory_finance import DEFAULTS, WEIGHTS, calculate, serializable, scorecard, validate_inputs, number
 from app.franchise.territory_access import is_territory_owner, can_view_territories
 from app.models import Franchise, FranchiseTerritory, TerritoryValuationSnapshot, TerritoryResearchRun, ImportJob, WorkerHeartbeat
 
@@ -75,7 +75,7 @@ def validate_geometry(geometry):
 
 
 def validate_payload(payload):
-    if not isinstance(payload, dict) or set(payload) - {"inputs", "scores", "score_evidence", "geometry", "sources", "boundary_note", "boundary_parts", "research_run_id", "service_price_selections", "financial_baseline", "area_linked_figures", "area_province", "include_enclosed", "scenario_mode", "prospect", "comparison_baseline"}:
+    if not isinstance(payload, dict) or set(payload) - {"inputs", "scores", "score_evidence", "geometry", "sources", "boundary_note", "boundary_parts", "research_run_id", "service_price_selections", "financial_baseline", "area_linked_figures", "area_province", "include_enclosed", "scenario_mode", "prospect", "comparison_baseline", "running_assumptions"}:
         raise ValueError("Invalid study data")
     if not isinstance(payload.get("inputs"), dict):
         raise ValueError("Enter financial inputs")
@@ -87,6 +87,8 @@ def validate_payload(payload):
     from app.franchise.territory_finance import COMMERCIAL_FEES
     if validated["fee_method"]=="commercial" and validated["territory_fee"]!=COMMERCIAL_FEES[validated["commercial_category"]]:
         raise ValueError("Apply the selected commercial fee, or choose another fee method for a different amount")
+    from app.franchise.territory_prospects import running_assumptions
+    running_assumptions(payload.get('running_assumptions'))
     mode=payload.get('scenario_mode','existing')
     if not isinstance(mode,str) or mode not in {'existing','prospective'}:raise ValueError('Choose an existing or prospective business scenario')
     if mode=='prospective':
@@ -195,10 +197,10 @@ def evaluate(franchise, payload):
         from app.franchise.territory_prospects import running_concern_summary
         comparison=baseline(franchise.id)
         if comparison['fingerprint']!=payload['comparison_baseline']:raise ValueError('Running-concern records changed. Refresh the separate comparison before saving.')
-        result['running_concern']=running_concern_summary(comparison,franchise.business_name,franchise)
+        result['running_concern']=running_concern_summary(comparison,franchise.business_name,franchise,payload.get('running_assumptions'))
     elif actuals:
         from app.franchise.territory_prospects import running_concern_summary
-        result['running_concern']=running_concern_summary(actuals,franchise.business_name,franchise)
+        result['running_concern']=running_concern_summary(actuals,franchise.business_name,franchise,payload.get('running_assumptions'))
     from app.franchise.territory_score_guidance import recommendations, populate_suggestions
     guidance_research=research
     if area_estimate:
@@ -294,11 +296,18 @@ def territory(franchise_id):
         from app.franchise.territory_score_guidance import recommendations, populate_suggestions
         populate_suggestions(payload, recommendations(payload))
     history = TerritoryValuationSnapshot.query.filter_by(territory_id=study.id).order_by(TerritoryValuationSnapshot.version.desc()).limit(20).all() if study else []
+    if history and not fresh_prospect and not json.loads(history[0].result_json).get('accounting_version'):
+        if payload.get('scenario_mode') == 'prospective' and not payload['inputs'].get('confirmed') and number(payload['inputs'].get('tax_percent',0),'Tax rate') == 0:
+            payload['inputs']['tax_percent'] = 27
+            salary_conversion_note += ' The unconfirmed legacy prospective example used 0% tax; this editable draft now uses the labelled 27% standard-company planning assumption. Confirm the applicable entity tax rate.'
+        payload['inputs']['confirmed'] = False
+        salary_conversion_note += ' This draft now uses after-tax net-profit pricing and separate cash-flow accounting. Saved reports retain their original calculation. Review the tax rate, asset depreciation/amortisation and interest. The previous other-finance-payments field is now principal only: enter borrowing interest separately before saving a new revision.'
     editable = current_user.has_permission("franchise_details:edit") and any(current_user.has_role(r) for r in ("Admin", "Super Admin", "Finance Manager"))
     session['territory_workspace'] = {'user_id': current_user.id, 'franchise_id': franchise.id}
     from app.franchise.territory_score_guidance import LABELS,GUIDANCE
+    from app.franchise.territory_prospects import RUNNING_FIELDS, running_assumptions
     return render_template("franchise/territory.html", franchise=franchise, payload=payload,
-        defaults=DEFAULTS, salary_conversion_note=salary_conversion_note, weights=WEIGHTS, factor_labels=LABELS, factor_guidance=GUIDANCE, version=study.version if study else 0, history=history,
+        defaults=DEFAULTS, running_fields=RUNNING_FIELDS, running_values=serializable(running_assumptions(payload.get('running_assumptions'))), salary_conversion_note=salary_conversion_note, weights=WEIGHTS, factor_labels=LABELS, factor_guidance=GUIDANCE, version=study.version if study else 0, history=history,
         saved_result=presentation_result(json.loads(history[0].result_json)) if history and not fresh_prospect else None,
         editable=editable, csrf=session["territory_csrf"], maps_key=current_app.config.get("GOOGLE_MAPS_API_KEY", ""))
 
