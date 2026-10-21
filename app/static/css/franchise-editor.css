@@ -1,0 +1,62 @@
+/* Editor-only screen layout. Saved reports retain their approved styles. */
+@media screen {
+  .franchise-editor-page { container-type: inline-size; min-width: 0; font-size: 15px; line-height: 1.5; }
+  .franchise-editor-page > .section-header {
+    display: grid; grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start; gap: 16px 24px; padding: 20px 24px; margin-bottom: 24px;
+  }
+  .franchise-editor-page .section-header h1 { margin: 0; font-size: 26px; line-height: 1.25; }
+  .franchise-editor-page .section-header p { margin: 8px 0 0; max-width: 740px; font-size: 14px; line-height: 1.55; }
+  .franchise-header-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; max-width: 300px; }
+  .franchise-header-status { grid-column: 1 / -1; }
+  .franchise-editor-page > .section-header > .btn { justify-self: end; align-self: start; }
+  .franchise-editor-page .badge { max-width: 100%; white-space: normal; text-align: left; font-size: 12px; line-height: 1.5; }
+  .franchise-editor-page .form-section-card { padding: 24px; }
+  .franchise-editor-page .form-section-card h2 { font-size: 21px !important; line-height: 1.3; }
+  .franchise-editor-page .section-title-row p { font-size: 14px; line-height: 1.55; margin-bottom: 0; }
+  .franchise-editor-page label { font-size: 14px; line-height: 1.4; }
+  .franchise-editor-page input:not([type=checkbox]):not([type=radio]),
+  .franchise-editor-page select, .franchise-editor-page textarea {
+    font: 400 14px/1.4 Arial, Helvetica, sans-serif !important;
+    margin: 0 !important; min-width: 0; box-sizing: border-box;
+  }
+  .franchise-editor-page input:not([type=checkbox]):not([type=radio]), .franchise-editor-page select {
+    min-height: 44px !important; height: 44px; padding: 10px 12px !important;
+  }
+  .franchise-editor-page .btn, .franchise-editor-page .button-auto {
+    width: auto; max-width: 100%; margin: 0; min-height: 42px !important;
+    font-size: 14px !important; line-height: 1.4 !important;
+  }
+  .franchise-editor-page .alert { font-size: 14px; line-height: 1.6; }
+  .franchise-editor-page .territory-search { grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 1.15fr); gap: 16px; align-items: end; }
+  .franchise-editor-page .territory-search > label { margin: 0; gap: 8px; }
+  .territory-search-actions { display: flex; flex-wrap: wrap; align-items: stretch; gap: 12px; margin: 4px 0 16px; }
+  .franchise-editor-page #boundary-status { font-size: 14px; line-height: 1.5; }
+
+  /* A compact account group avoids the oversized second header row at tablet widths. */
+  html body:has(.franchise-editor-page) .ms-topbar .topbar-user { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px !important; margin-left: auto; font-size: 13px !important; }
+  html body:has(.franchise-editor-page) .ms-topbar .topbar-user strong,
+  html body:has(.franchise-editor-page) .ms-topbar .logout-link { font-size: 14px !important; line-height: 1.4 !important; }
+  html body:has(.franchise-editor-page) .ms-topbar .logout-link { margin: 0 !important; padding: 8px 12px !important; }
+  @media (max-width: 980px) {
+    html body:has(.franchise-editor-page) .ms-topbar.ms-topbar { flex-direction: row !important; height: auto !important; align-content: center; gap: 10px 16px !important; }
+    html body:has(.franchise-editor-page) .ms-topbar .ms-topbar-brand.ms-topbar-brand { flex: 1 1 320px; font-size: 17px !important; }
+    html body:has(.franchise-editor-page) .ms-topbar .topbar-user { flex: 0 1 auto; }
+    html body:has(.franchise-editor-page) .ms-topbar .topbar-user > span,
+    html body:has(.franchise-editor-page) .ms-topbar .topbar-user > small { display: none; }
+  }
+  @container (max-width: 820px) {
+    .franchise-editor-page > .section-header { grid-template-columns: minmax(0, 1fr); }
+    .franchise-editor-page > .section-header > .btn { justify-self: start; }
+    .franchise-header-actions { max-width: none; justify-content: flex-start; }
+    .franchise-editor-page .territory-search { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .franchise-editor-page .territory-search > label:first-child { grid-column: 1 / -1; }
+  }
+  @container (max-width: 540px) {
+    .franchise-editor-page > .section-header, .franchise-editor-page .form-section-card { padding: 18px; }
+    .franchise-editor-page .section-header h1 { font-size: 23px; }
+    .franchise-editor-page .territory-search, .franchise-details-page .form-grid { grid-template-columns: minmax(0, 1fr); }
+    .franchise-details-page .form-grid > label { text-align: left; }
+    .territory-search-actions { flex-direction: column; }
+  }
+}

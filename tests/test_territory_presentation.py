@@ -79,7 +79,7 @@ def test_editor_removes_checkboxes_and_manual_salary_is_added_once(app,franchise
     client=login(app,franchise);base=f'/franchise/{franchise.id}/territory'
     page=client.get(base).get_data(as_text=True)
     assert 'id="input-salary_in_fixed"' not in page and 'id="show-individual-boundaries"' not in page
-    assert 'Town, suburb or municipality (automatic)' in page
+    assert '<option value="auto">Town, suburb or municipality</option>' in page
     assert 'Owner salary per month (R)' in page and 'Expected market share (%)' in page
     assert 'step="0.01"' in page and 'January' in page
     data=payload();data['inputs'].update(expense_mode='manual',fixed_cost=60000,owner_salary=25000,salary_in_fixed=False)

@@ -2,7 +2,8 @@
 {% block app_content %}
 <link rel="stylesheet" href="{{ asset_url('css/territory.css') }}">
 <link rel="stylesheet" href="{{ asset_url('css/territory-print.css') }}" media="print">
-<div class="territory-page" data-territory-assessments>
+<link rel="stylesheet" href="{{ asset_url('css/franchise-editor.css') }}" media="screen">
+<div class="territory-page franchise-editor-page" data-territory-assessments>
 <style>
 .territory-search{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:16px}
 .territory-search label,.territory-area-row label{display:flex;flex-direction:column;gap:6px;text-align:left;min-width:0}
@@ -24,10 +25,11 @@
   <p>Roads and suburbs provide geographic context. Confirm the franchise boundary against its agreement before using a valuation.</p>
   {% if editable %}<div class="territory-search">
     <label>Area name or municipality code <input id="boundary-query" placeholder="Rand West City or GT485" maxlength="180"></label>
-    <label>Search for <select id="boundary-kind"><option value="auto">Town, suburb or municipality (automatic)</option><option value="municipality">Official municipality</option><option value="ward">Official wards by municipality</option><option value="town">Historical town (Census 2011)</option><option value="suburb">Historical suburb (Census 2011)</option></select></label>
+    <label>Search for <select id="boundary-kind"><option value="auto">Town, suburb or municipality</option><option value="municipality">Official municipality</option><option value="ward">Official wards by municipality</option><option value="town">Historical town (Census 2011)</option><option value="suburb">Historical suburb (Census 2011)</option></select></label>
     <label>Official boundary release <select id="boundary-release"><option value="current">Currently effective</option><option value="2026">Published 2026 (effective 4 November 2026)</option></select></label>
-  </div><button class="btn" id="find-boundaries" type="button">Find geographical areas</button>
+  </div><div class="territory-search-actions"><button class="btn" id="find-boundaries" type="button">Find geographical areas</button>
   <button class="btn" id="find-suburbs" type="button">Refresh neighbouring area outlines</button>
+  </div>
   <p id="boundary-status" role="status"></p><div id="boundary-areas" style="max-height:350px;overflow:auto"></div>
   <button class="btn" id="compose-boundary" type="button">Apply included areas and cut-outs</button>{% endif %}
   <div class="territory-selection-panel"><p id="territory-selection-summary" role="status"></p><div id="territory-selected-areas" aria-label="Currently selected territory areas"></div><button class="btn secondary" id="show-selected-territory" type="button">Show whole selected territory</button></div>

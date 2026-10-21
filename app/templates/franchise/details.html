@@ -1,16 +1,21 @@
 {% extends "base.html" %}
 {% block app_content %}
+<link rel="stylesheet" href="{{ asset_url('css/franchise-editor.css') }}" media="screen">
+<div class="franchise-editor-page franchise-details-page">
 <div class="section-header">
-    <div>
+    <div class="franchise-header-copy">
         <h1>Franchise Details</h1>
-        {% if territory_owner_access %}
-        <a class="btn" href="{{ url_for('franchise.territory', franchise_id=franchise.id) }}">Territory &amp; Valuation</a>
-        {% endif %}
         <p class="muted">Maintain the franchise profile used across dashboards, reports, PDF cover pages, and notifications. After saving, the dashboard will show the saved franchise and the form will be cleared from the screen.</p>
     </div>
+    <div class="franchise-header-actions">
+    {% if territory_owner_access %}
+        <a class="btn" href="{{ url_for('franchise.territory', franchise_id=franchise.id) }}">Territory &amp; Valuation</a>
+    {% endif %}
     {% if current_user.has_role('Admin') or current_user.has_role('Super Admin') %}
         <a class="btn button-auto" href="{{ url_for('franchise.create_franchise_user') }}">Create New Franchise User</a>
     {% endif %}
+    </div>
+    <div class="franchise-header-status">
     {% if not can_view_agreement and not can_view_scale %}
         <span class="badge warning">Agreement and Royalty Scale hidden by role permissions</span>
     {% elif readonly_finance_fields %}
@@ -18,6 +23,7 @@
     {% else %}
         <span class="badge success">Agreement/Royalty Scale edit access enabled for Admin/Franchise Manager</span>
     {% endif %}
+    </div>
 </div>
 
 <div class="form-section-card no-print" id="franchise-selector-card">
@@ -375,4 +381,5 @@ toggleMinimumRoyaltyAmount();
 </script>
 {% endif %}
 
+</div>
 {% endblock %}
