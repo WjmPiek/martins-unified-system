@@ -2,6 +2,11 @@
   'use strict';
   const ctx = JSON.parse(document.getElementById('territory-context').textContent);
   const byId = id => document.getElementById(id);
+  // The fresh-assessment flag is a one-time action, not a saved report mode.
+  if(window.history?.replaceState){
+    const address=new URL(window.location.href);
+    if(address.searchParams.get('scenario')==='prospective'){address.searchParams.delete('scenario');window.history.replaceState(null,'',address);}
+  }
   const status = text => { byId('territory-status').textContent = text; };
   const decimal = (value,places=2) => new Intl.NumberFormat('en-GB', {minimumFractionDigits:places,maximumFractionDigits:places}).format(Number(value));
   const rand = value => 'R ' + decimal(value);

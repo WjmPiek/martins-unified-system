@@ -2,7 +2,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const vm=require('node:vm');
-function harness(initialPayload={},fields=[]){
+function harness(initialPayload={},fields=[],initialUrl=null){
   const elements=new Map(),requests=[];
   const element=id=>{if(!elements.has(id))elements.set(id,{value:'',textContent:'',hidden:true,checked:false,inert:false,dataset:{},addEventListener(type,handler){(this.listeners??={})[type]=handler;},replaceChildren(){this.children=[];},append(...items){(this.children??=[]).push(...items);},setAttribute(){},setCustomValidity(message){this.validationMessage=message;}});return elements.get(id);};
   element('territory-context').textContent=JSON.stringify({payload:{sources:[],boundary_parts:[],...initialPayload},hasMaps:true,editable:true,calculateUrl:'/calculate',saveUrl:'/save',composeUrl:'/compose',researchUrl:'/research'});
@@ -10,11 +10,12 @@ function harness(initialPayload={},fields=[]){
   fields.forEach(spec=>Object.assign(element('input-'+spec.dataset.input),spec));
   const fieldElements=fields.map(spec=>element('input-'+spec.dataset.input));
   const sandbox={document:{getElementById:element,querySelector:()=>element('page'),querySelectorAll:selector=>['[data-input]','[data-format]'].includes(selector)?fieldElements:[],createTextNode:text=>({textContent:text}),createElement:()=>element(Symbol())},window:{location:{reload(){throw Error('Unexpected reload');}}},Intl,URL,AbortController,setTimeout,clearTimeout,fetch:(url,options)=>new Promise(resolve=>requests.push({url,options,resolve}))};
+  if(initialUrl){sandbox.window.location.href=initialUrl;sandbox.window.history={replaceState(_state,_title,url){sandbox.window.location.href=String(url);}};}
   sandbox.globalThis=sandbox;
   let source=fs.readFileSync('app/static/js/territory.js','utf8');
   source=source.replace(/\}\)\(\);\s*$/,`globalThis.api={addSuburbAt,pointInTerritory,nextAreaSelection,preview,installMapForTest:stub=>{map=stub;mapHasFitted=true;},labelLayout,mapLineStyle,getAreas:()=>areas,dateText,fieldNumber,setFieldValue,collect,fitGeometry,pendingFit:()=>pendingMapFit,hasFitted:()=>mapHasFitted,findAreas,namedPending:()=>namedSearchPending,invalidateScoreRecommendations,renderResearch,boundaryNote,run,changeAreaSelection,invalidateResearch,researchTerritory,bump:()=>inputRevision++,pending:()=>researchPending};})();`);
   vm.runInNewContext(source,sandbox);
-  return {api:sandbox.api,element,requests};
+  return {api:sandbox.api,element,requests,location:sandbox.window.location};
 }
 const result={scorecard:{score:null},recommended_fee:null,recommendation_reason:'Draft',expected:{errors:[],years:[],initial:0,ending_cash:0,additional_funding:0,payback_months:null},downside:{ending_cash:0,additional_funding:0}};
 const finish=(request,body,ok=true)=>request.resolve({ok,json:async()=>body});
@@ -318,4 +319,12 @@ test('map clicks resolve an already loaded suburb without a publisher request',a
   assert.equal(h.api.getAreas()[0].selection,'exclude');
   assert.equal(h.requests.length,2,'Removing the last selected area does not query the publisher');
   await remove;
+});
+
+test('fresh prospective link is consumed once so saved revisions reload normally',()=>{
+  const h=harness({},[],'https://martinssystem.co.za/franchise/55/territory?scenario=prospective&assessment=running');
+  const url=new URL(h.location.href);
+  assert.equal(url.searchParams.has('scenario'),false);
+  assert.equal(url.searchParams.get('assessment'),'running');
+  assert.equal(url.pathname,'/franchise/55/territory');
 });
