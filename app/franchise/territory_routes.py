@@ -3,7 +3,7 @@ from datetime import datetime, timezone, timedelta
 import json
 from secrets import token_urlsafe, compare_digest
 from urllib.parse import urlsplit
-from flask import abort, current_app, jsonify, render_template, request, session
+from flask import abort, current_app, jsonify, render_template, request, session, redirect, url_for
 from flask_login import current_user, login_required
 from sqlalchemy.exc import IntegrityError
 from app.audit import log_action
@@ -253,8 +253,22 @@ def territory_index():
         abort(404)
     if not can_view_territories(current_user):
         abort(403)
+    franchises = current_user.accessible_franchises()
+    if request.args.get('choose') != '1' and franchises:
+        accessible_ids = {franchise.id for franchise in franchises}
+        remembered = session.get('territory_workspace', {})
+        selected = remembered.get('franchise_id') if remembered.get('user_id') == current_user.id else None
+        if selected not in accessible_ids:
+            latest = FranchiseTerritory.query.filter(
+                FranchiseTerritory.updated_by_id == current_user.id,
+                FranchiseTerritory.franchise_id.in_(accessible_ids),
+            ).order_by(FranchiseTerritory.updated_at.desc(), FranchiseTerritory.id.desc()).first()
+            selected = latest.franchise_id if latest else current_user.assigned_franchise_id()
+        if selected not in accessible_ids:
+            selected = franchises[0].id
+        return redirect(url_for('franchise.territory', franchise_id=selected, assessment='prospective'))
     return render_template("franchise/territories.html",
-                           franchises=current_user.accessible_franchises())
+                           franchises=franchises)
 
 
 @franchise_bp.get("/<int:franchise_id>/territory")
@@ -281,6 +295,7 @@ def territory(franchise_id):
         populate_suggestions(payload, recommendations(payload))
     history = TerritoryValuationSnapshot.query.filter_by(territory_id=study.id).order_by(TerritoryValuationSnapshot.version.desc()).limit(20).all() if study else []
     editable = current_user.has_permission("franchise_details:edit") and any(current_user.has_role(r) for r in ("Admin", "Super Admin", "Finance Manager"))
+    session['territory_workspace'] = {'user_id': current_user.id, 'franchise_id': franchise.id}
     from app.franchise.territory_score_guidance import LABELS,GUIDANCE
     return render_template("franchise/territory.html", franchise=franchise, payload=payload,
         defaults=DEFAULTS, salary_conversion_note=salary_conversion_note, weights=WEIGHTS, factor_labels=LABELS, factor_guidance=GUIDANCE, version=study.version if study else 0, history=history,

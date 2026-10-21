@@ -5,7 +5,7 @@ from flask_login import login_user
 from test_native_territory import app, franchise, login, payload, HEADERS
 from test_territory_research import request_data
 from app.extensions import db
-from app.models import User, ImportJob, TerritoryResearchRun
+from app.models import User, ImportJob, TerritoryResearchRun, Franchise, FranchiseTerritory
 from app.franchise.territory_access import is_territory_owner
 from app.franchise.territory_research import start, run_public_research
 from app.franchise import territory_sources
@@ -36,10 +36,44 @@ def test_non_owner_cannot_access_any_territory_endpoint_or_sidebar(app, franchis
 def test_owner_sidebar_and_native_franchise_selector(app, franchise):
     client = login(app, franchise)
     response = client.get("/franchise/territories")
-    assert response.status_code == 200
-    assert b'href="/franchise/territories"' in response.data
-    assert f'/franchise/{franchise.id}/territory'.encode() in response.data
-    assert client.get(f"/franchise/{franchise.id}/territory").status_code == 200
+    assert response.status_code == 302
+    assert response.location == f'/franchise/{franchise.id}/territory?assessment=prospective'
+    workspace = client.get(response.location)
+    assert workspace.status_code == 200
+    assert b'id="territory-map"' in workspace.data
+    assert b'choose=1' in workspace.data
+    selector = client.get('/franchise/territories?choose=1')
+    assert selector.status_code == 200
+    assert f'/franchise/{franchise.id}/territory'.encode() in selector.data
+
+
+def test_sidebar_reopens_last_workspace_without_starting_a_fresh_assessment(app, franchise):
+    client = login(app, franchise)
+    other = Franchise(business_name='Another territory')
+    db.session.add(other)
+    db.session.commit()
+    assert client.get(f'/franchise/{other.id}/territory').status_code == 200
+    response = client.get('/franchise/territories')
+    assert response.location == f'/franchise/{other.id}/territory?assessment=prospective'
+    assert 'scenario=' not in response.location
+
+
+def test_new_session_uses_owners_latest_saved_territory(app, franchise):
+    client = login(app, franchise)
+    other = Franchise(business_name='Last saved territory')
+    db.session.add(other)
+    db.session.flush()
+    db.session.add(FranchiseTerritory(franchise_id=other.id, payload_json='{}', updated_by_id=User.query.one().id))
+    db.session.commit()
+    assert client.get('/franchise/territories').location == f'/franchise/{other.id}/territory?assessment=prospective'
+
+
+def test_sidebar_ignores_a_missing_or_another_users_remembered_workspace(app, franchise):
+    client = login(app, franchise)
+    for remembered in [{'user_id': User.query.one().id, 'franchise_id': 999999}, {'user_id': -1, 'franchise_id': 999999}]:
+        with client.session_transaction() as state:
+            state['territory_workspace'] = remembered
+        assert client.get('/franchise/territories').location == f'/franchise/{franchise.id}/territory?assessment=prospective'
 
 
 @pytest.mark.parametrize("change", ["email", "active"])
