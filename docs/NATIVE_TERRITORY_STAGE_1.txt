@@ -1,0 +1,215 @@
+MARTINS FUNERALS — NATIVE TERRITORY INTEGRATION
+Inspection, proposed design and stage 1 review
+20 October 2026
+
+STATUS
+
+Stage 1 has been implemented and tested locally. This is a staged integration,
+not the completed research and mapping product. Nothing has been pushed to
+GitHub, deployed to Render, or applied to the live database. The feature is
+disabled by default. The existing Franchise Compass folder was read only.
+
+INSPECTION
+
+Unified System:
+Repository: https://github.com/WjmPiek/martins-unified-system
+Inspected base commit: 0e4e1555c1cf337ac3f501a646a911912da95d69
+Local branch: codex/native-territory-valuation
+
+The application uses Flask, Jinja templates, Flask-Login, SQLAlchemy and
+Flask-Migrate/Alembic. Configuration reads DATABASE_URL; the documented hosted
+database is PostgreSQL, with a SQLite recovery fallback. A durable job queue
+already supports background processing and Render workers.
+
+Franchise identity resides in Franchise. The system already has agreement
+dates, royalty brackets, optional minimum royalties, monthly operating figures,
+regional information, audit logging and franchise-scoped users. The roadmap
+heat map uses Google Maps. Its client and deceased records are point data,
+not contractual territory boundaries.
+
+The current navigation and branding are defined by the existing base template
+and Martins stylesheets. The integration extends Franchise Details within that
+shell. It creates no separate website, login, application server or database.
+
+The live website reached its login screen. Authenticated production screens,
+deployed commit, actual database rows, migration head, Render configuration and
+production credentials were not inspected. Repository findings must not be
+treated as verification of production database state.
+
+Existing valuation system:
+C:\Users\WjmLabtop\OneDrive\SERVER\Franchise-Compass-SA
+
+The root folder contains the newer geographical-boundary application. It uses
+local Python HTTP services, browser JavaScript and data/studies.sqlite. That
+database was inspected in read-only mode and contains zero saved studies.
+Browser-only drafts and the nested duplicate folder were not migrated.
+
+Compass contains polygon/suburb inclusion and exclusion, WorldPop aggregation,
+Stats SA mortality proxies, business and cash-price research, weighted scoring,
+territory fees and monthly financial projections. Some boundary sources are
+2011 census sub-places; they must retain their year and must not be presented
+as current surveyed franchise boundaries.
+
+Existing scorecard weights, preserved in stage 1:
+  Population/households 20%; demand 25%; affordability 15%; competition 15%;
+  policy opportunity 10%; accessibility 10%; growth 5%.
+Each factor is scored from 0 to 5.
+
+Existing territory price bands, preserved:
+  Development below 40: R75,000
+  Emerging from 40: R112,500
+  Standard from 60: R150,000
+  High potential from 75: R187,500
+  Premium from 90: R225,000
+
+Compass defaults include a 60-month repayment term, 2% annual volume growth,
+4% price growth, 5% cost growth, a 30% target operating margin, a R25,000 owner
+salary, R5,000 monthly reserve, R300,000 setup and R180,000 working capital.
+Its README explicitly describes starting costs/prices/share as examples.
+No saved approved assumptions were found. The new screen identifies defaults
+as examples and requires explicit financial confirmation before pricing.
+
+PROPOSED NATIVE DESIGN
+
+Use existing franchise identity and permissions throughout. Keep territorial
+planning records distinct from recorded monthly transactions within the same
+database, so forecasting cannot change actual sales, royalties or performance.
+Add versioned boundaries, evidence, assumptions and calculation snapshots.
+Reuse the existing background queue for bounded, retryable research work.
+
+Use Unified's agreement method, brackets, fallback scale rules and minimum
+royalties. Compass's flat default 6% is not a replacement for those contracts.
+Preserve source fee bands as commercial ceilings, then apply financial limits.
+Do not adopt Unified's stored 1.6% target-growth default as a universal forecast.
+
+STAGE 1 — IMPLEMENTED LOCALLY
+
+1. Native Territory & Valuation entry within Franchise Details.
+2. Two additive tables: franchise_territories and territory_valuation_snapshots.
+   Existing records and role assignments are unchanged by the migration.
+3. Immutable application-level calculation history: each save appends a
+   revision, including inputs, evidence, results, formula version and the
+   agreement/royalty settings used. There is no history-edit/delete endpoint.
+4. Existing view/edit/export permission checks plus franchise ownership checks.
+   Financial editing is restricted to Admin/Super Admin/Finance Manager with
+   the applicable existing edit permission. No new permissions are granted.
+5. CSRF protection for new write endpoints, optimistic version checks, bounded
+   request sizes and validation of numerical values and GeoJSON topology.
+6. GeoJSON polygon import and road-map overlay using the existing Google Maps
+   configuration. Polygon holes and multipolygons are supported. Automatic
+   boundary discovery and interactive boundary editing are not in stage 1.
+7. Evidence records with metric, source link, observation/data date, retrieval
+   date, confidence, method and value; source links are displayed safely.
+8. The original seven-factor scorecard and five commercial fee bands.
+9. Sixty monthly forecast rows with annual summaries, operating costs, service
+   mix, policy cash contribution, existing royalty rules, salary, cash reserves,
+   tax planning allowance, finance/capex/working adjustments and repayments.
+10. Upfront or instalment funding, optional interest, exact final instalment,
+    cash shortfalls, investment recovery and a 20% sales-downside scenario.
+11. Provisional pricing is capped at the score band and searched against actual
+    monthly expected/downside cash flow, target margins and a downside buffer.
+    Missing documented scores, unconfirmed assumptions, missing royalty setup,
+    or incomplete sourced boundary/evidence prevent a recommended price.
+12. Saved-revision JSON export. Saved results are visible to authorised viewers.
+
+STAGES STILL REQUIRED
+
+Stage 2: Native territory mapping and automatic research.
+  - Port Compass town/suburb discovery and inclusion/exclusion controls into
+    this franchise page. Retain source geography codes, dates and licences.
+  - Detect overlaps between approved franchise boundaries and preserve
+    agreement references; mapping alone cannot determine contractual rights.
+  - Integrate WorldPop tile aggregation and official Stats SA geographic data.
+  - Add background adapters for Stats SA population/households/mortality and
+    SARS aggregate economic indicators. Match geographic vintages explicitly.
+  - Add verified operator discovery, deduplication and coverage warnings;
+    a directory with no results must not imply no competitors.
+  - Populate derived demand/affordability/accessibility/growth with documented
+    methods and distinguish measured values, modelled values and assumptions.
+  - Add refresh/retry/staleness handling and per-value confidence reasons.
+  - Replace JSON evidence entry with normal source-review controls.
+
+Stage 3: Business-model reconciliation and financial acceptance.
+  - Confirm Martins' actual costs, joining fees, repayment/interest terms,
+    price bands, margin requirements, policy sales/lapse/commission rules,
+    and tax/VAT treatment.
+  - Port the remaining Compass policy-book survival and new-policy cohort
+    calculations. Stage 1 uses explicit policy receipt/payover/commission
+    amounts; it does not yet reproduce those cohort projections.
+  - Reconcile representative existing Compass cases and Unified contracts.
+  - Review bank cash timing, VAT refunds, tax/depreciation, financing costs,
+    grouped franchise terms and forecast collection assumptions.
+  - Add approved-versus-draft boundary and valuation workflow, human-readable
+    valuation reports and production-like financial acceptance fixtures.
+
+Stage 4: Isolated staging and release review.
+  - Inspect actual migration head and a suitably protected database clone.
+  - Test PostgreSQL migrations, concurrent edits, worker restart behaviour,
+    API quotas, live map rendering, all relevant roles and mobile layouts.
+  - Obtain explicit approval before any live migration, enablement, merge or
+    deployment. A production release is not authorised by the local prototype.
+
+RESEARCH SOURCE FINDINGS
+
+Stats SA provides ward-level Small Area Population Estimates, 2022, using
+2020 ward boundaries. A custom franchise polygon is a separate geography;
+allocation from wards must remain a modelled estimate with a stated method.
+https://www.statssa.gov.za/?p=18967
+https://www.statssa.gov.za/wp-content/uploads/2025/11/Ward-statistical-product-technical-note.pdf
+
+SARS publishes aggregate annual tax statistics. Taxpayer averages are not
+household incomes, and municipal boundaries/data periods must be recorded.
+https://www.sars.gov.za/about/sars-tax-and-customs-system/tax-statistics/
+https://www.sars.gov.za/wp-content/uploads/2025taxstats/2025-Tax-Statistics-PDF-.pdf
+
+Stats SA mortality is the source for the demand proxy, which must be matched
+to a same-period population denominator. It is not a count of funerals in a
+custom franchise boundary.
+https://isibaloweb.statssa.gov.za/pages/surveys/pss/hvs/cod/2024/cod2024.php
+
+CIPC registration status can support business identity verification; an entity
+registration alone does not establish that a particular branch is operating.
+https://www.cipc.co.za/wp-content/uploads/2025/08/Customer-Notice-36-of-2025-Deregistration-Complaints.pdf
+
+VALIDATION AND LIMITATIONS
+
+28 new integration tests pass. They cover hand-calculated forecasts, original
+fee bands, cent reconciliation, interest and upfront funding, minimum royalties,
+old/new agreement methods, negative insurance administration income, funding
+deficits, incomplete assumptions/evidence, numerical and boundary validation,
+role revocation, cross-franchise access, CSRF, conflicting saves, snapshot
+exports, bounded royalty query reuse and additive migration upgrade/downgrade.
+
+Full-suite result: 61 passed, 1 failed. The failure is the existing test
+test_admin_creates_brand_new_franchise_user_from_franchise_details, which expects
+the text 'Client coverage and density'. The exact same failure was reproduced
+on untouched base commit 0e4e1555c1cf337ac3f501a646a911912da95d69.
+The unrelated original screen/test was not changed.
+
+A localhost preview with invented data was opened in the browser and its
+Calculate interaction verified. No production credentials/data were used.
+The preview has no Google Maps key, so external road tiles were not visually
+verified. Migration execution was tested with SQLite, not PostgreSQL.
+
+LOCAL REVIEW INSTRUCTIONS
+
+The supplied patch applies at the inspected base commit and includes new files.
+It is not a deployment script. Build/review in an isolated copy only.
+
+Install the existing requirements plus the added shapely==2.1.2 dependency.
+After verifying the target database is disposable staging, review and run the
+additive migration. Enable TERRITORY_VALUATION_ENABLED=true only in that isolated
+environment. The default remains false.
+
+The migration revision is v128_native_territory after v127_insurance_app.
+Disable the flag to hide the new routes/page. Preserve the new tables/history
+when disabling; a downgrade removes planning history and needs a backup decision.
+
+Repeatable local test invocation:
+  python -m pytest --noconftest --confcutdir=tests -p no:cacheprovider tests -q
+The cache plugin is disabled because pytest discovers an unrelated parent
+configuration outside this workspace and attempts to write its cache there.
+
+No claim is made that the complete ten-requirement integration is finished.
+This package is the tested first increment and the detailed plan for completing
+the remaining mapping, research and financial-validation stages.

@@ -1,0 +1,129 @@
+/* Scoped territory layout: labels, controls and financial figures align consistently. */
+.territory-page{min-width:0;max-width:100%}
+.territory-page .form-section-card{margin:0 0 20px;padding:24px;min-width:0}
+.territory-page .form-section-card h2{margin:0 0 16px;text-align:left}
+.territory-page .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 24px;align-items:start}
+.territory-page .form-grid>label{display:flex;flex-direction:column;gap:8px;margin:0;min-width:0;text-align:left;font-weight:600;align-items:stretch;justify-content:flex-start}
+.territory-page .form-grid input:not([type=checkbox]),.territory-page .form-grid select,.territory-page .form-grid textarea{box-sizing:border-box;width:100%;min-width:0;max-width:100%;margin:0;text-align:left}
+.territory-page .form-grid input:not([type=checkbox]),.territory-page .form-grid select{height:44px}
+.territory-page textarea{resize:vertical;line-height:1.5;min-height:90px;overflow-wrap:anywhere}
+.territory-page input[type=checkbox]{width:18px!important;height:18px!important;flex:0 0 18px;margin:0}
+.territory-page .territory-checkbox{display:flex;align-items:center;gap:10px;text-align:left}
+.territory-score-factor{border-top:1px solid #ded7e8;padding:20px 0;margin:0}
+.territory-score-factor h3{margin:0 0 14px;text-align:left}
+.territory-scorecard .territory-score-factor .form-grid{grid-template-columns:minmax(110px,150px) minmax(0,1fr)}
+.territory-table-wrap{width:100%;overflow-x:auto}
+.territory-page .territory-projection{width:100%;table-layout:fixed;border-collapse:collapse;font-variant-numeric:tabular-nums}
+.territory-page .territory-projection th,.territory-page .territory-projection td{padding:10px 8px;text-align:right;vertical-align:top}
+.territory-page .territory-projection th:first-child{width:23%;text-align:left;overflow-wrap:break-word}
+.territory-page .territory-projection td{white-space:nowrap}
+.territory-assumptions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px 24px;margin:0}
+.territory-assumptions>div{min-width:0;border-bottom:1px solid #eee;padding-bottom:10px}
+.territory-assumptions dt{font-weight:600;margin:0 0 5px}
+.territory-assumptions dd{margin:0;overflow-wrap:anywhere}
+.territory-report p,.territory-report a{overflow-wrap:anywhere}
+@media(max-width:760px){.territory-page .form-grid,.territory-scorecard .territory-score-factor .form-grid,.territory-assumptions{grid-template-columns:minmax(0,1fr)}.territory-page .form-section-card{padding:18px}.territory-page .territory-projection{min-width:650px}}
+
+.territory-financial-block .territory-input-label{display:block;min-height:2.8em;line-height:1.4}
+
+.territory-financial-block .territory-assumptions dt{min-height:2.8em;line-height:1.4}
+
+/* Numeric values use the same convention as saved reports: R 35,000.00 / 70.00%. */
+.territory-page .form-grid input[data-format]{text-align:right;font-variant-numeric:tabular-nums;font-size:16px}
+.territory-page .form-grid input[readonly],.territory-page .form-grid select:disabled{background:#f2f4f7!important;color:#475467!important;opacity:1}
+.territory-page .form-grid input[aria-invalid=true]{border-color:#b42318!important}
+.territory-page .territory-financial-block{border-top:3px solid #6b4aa0;background:#fff}
+.territory-page .territory-assumptions dd{font-variant-numeric:tabular-nums;color:#18202a;font-weight:600}
+.territory-page .territory-assumptions dt{color:#475467;font-size:14px}
+.territory-page .territory-projection th{color:#344054;background:#f3f0f7;text-transform:none;letter-spacing:0}
+.territory-page .territory-projection td{color:#18202a}
+/* Native map buttons must not inherit the application button theme. Inline Google
+   dimensions and positioning remain authoritative. Scope to these two maps only. */
+:is(#territory-map,#report-map) button,
+:is(#territory-map,#report-map) button:hover{
+  min-height:0!important;min-width:0!important;width:auto;padding:0!important;
+  margin-top:0;background:#fff!important;color:#333!important;border:0!important;
+  border-radius:2px!important;box-shadow:none!important;transform:none!important;
+  font-weight:400;line-height:normal;letter-spacing:normal;text-transform:none;
+}
+:is(#territory-map,#report-map) .gm-style button.gm-ui-hover-effect,
+:is(#territory-map,#report-map) .gm-style button.gm-ui-hover-effect:hover{background:transparent!important;border-radius:0!important}
+:is(#territory-map,#report-map) .gm-style button:focus-visible{outline:2px solid #6b4aa0!important;outline-offset:-2px}
+:is(#territory-map,#report-map) .gm-style-iw{color:#18202a}
+:is(#territory-map,#report-map) .territory-map-description{font-size:14px;line-height:1.5;padding:0 4px 8px;max-width:320px;text-align:left}
+@media(max-width:760px){.territory-financial-block .territory-input-label{min-height:0}.territory-financial-block .territory-assumptions dt{min-height:0}}
+
+:is(#territory-map,#report-map) button[role=menuitemradio]{padding:0 8px!important}
+
+.territory-page input[type=checkbox]{min-height:18px!important;accent-color:#6b4aa0}
+
+.territory-selection-panel{padding:12px 14px;background:#f6f3fa;border:1px solid #e2d9ec;border-radius:8px;margin:16px 0}
+.territory-selection-panel p{margin:0 0 10px;line-height:1.5}
+#territory-selected-areas{display:flex;flex-wrap:wrap;gap:8px;max-height:160px;overflow-y:auto}
+.territory-page #territory-selected-areas .territory-selection-chip{width:auto;min-height:32px!important;margin:0;padding:5px 10px!important;font-size:13px;background:#fff!important;color:#4a246a!important;border:1px solid #c9b8db!important;border-radius:6px!important}
+.territory-area-label-selected{color:#4a246a!important;font-weight:600!important;background:rgba(248,244,253,.92)!important}
+
+.territory-page .territory-selection-panel #show-selected-territory,
+.territory-page .territory-selection-panel #show-selected-territory:hover{width:auto;min-height:34px!important;margin:10px 0 0;padding:6px 12px!important;background:#fff!important;color:#4a246a!important;border:1px solid #c9b8db!important;font-size:13px}
+
+.territory-fee-cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;align-items:stretch}
+.territory-page .territory-fee-card{border-top:3px solid #6b4aa0!important;min-width:0}
+.territory-fee-amount{font-size:22px;font-weight:700;color:#4a246a;font-variant-numeric:tabular-nums;line-height:1.4}
+.territory-fee-rates{list-style:none;margin:12px 0;padding:0}
+.territory-fee-rates li{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid #ece7f1}
+#map-area-description{min-height:3em;background:#f6f3fa;border-left:3px solid #6b4aa0;padding:10px 12px;font-size:13px;line-height:1.5;pointer-events:none}
+@media(max-width:760px){.territory-fee-cards{grid-template-columns:minmax(0,1fr)}}
+
+.territory-fee-card h2{min-height:2.8em;line-height:1.4}
+.territory-fee-intro{min-height:4.5em;line-height:1.5}
+.territory-fee-card .territory-fee-amount{min-height:1.4em;margin:12px 0;font-size:26px}
+
+.territory-fee-cards{grid-template-columns:repeat(3,minmax(0,1fr))}
+.territory-running-figures{margin:12px 0;font-variant-numeric:tabular-nums}
+.territory-running-figures>div{padding:8px 0;border-bottom:1px solid #ece7f1}
+.territory-running-figures dt{font-weight:600;color:#475467}
+.territory-running-figures dd{margin:4px 0 0;font-weight:600}
+#prospect-controls{margin:16px 0}
+@media(max-width:1100px){.territory-fee-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.running-concern-card{grid-column:1/-1}}
+@media(max-width:760px){.territory-fee-cards{grid-template-columns:minmax(0,1fr)}}
+
+.territory-fee-card h2{min-height:4.2em}
+.territory-fee-card .territory-fee-amount{font-size:clamp(18px,1.8vw,26px);overflow-wrap:anywhere}
+@media(max-width:760px){.territory-fee-card h2,.territory-fee-intro{min-height:0}}
+
+/* Three independent assessments share one detail view. */
+.territory-assessment-panel[hidden]{display:none!important}
+.territory-legacy-forecast{display:none!important}
+.territory-assessment-print{display:flex;align-items:end;gap:14px;flex-wrap:wrap;margin:18px 0}
+.territory-assessment-print label{display:flex;flex-direction:column;gap:6px;min-width:260px}
+.territory-assessment-print p{flex-basis:100%;margin:0}
+.territory-fee-card.is-selected{border:2px solid #6b4aa0;box-shadow:0 0 0 2px #eee7f7}
+.territory-fee-card [role=tab]{font:inherit;font-weight:700;text-align:left;color:#35214e;background:transparent;border:0;border-radius:4px;padding:0;width:100%;cursor:pointer;line-height:inherit}
+.territory-fee-card [role=tab]:focus-visible{outline:3px solid #6b4aa0;outline-offset:5px}
+.territory-edit-controls{margin:24px 0;border:1px solid #d9d1e3;border-radius:10px;padding:16px}
+.territory-edit-controls>summary{font-size:18px;font-weight:650;cursor:pointer;color:#49315f}
+.territory-assessment-title{border-bottom:2px solid #6b4aa0;padding-bottom:12px}
+@media(min-width:641px){.territory-fee-cards{grid-template-columns:repeat(3,minmax(0,1fr))}.territory-fee-cards .running-concern-card{grid-column:auto}}
+@media(max-width:640px){.territory-fee-cards{grid-template-columns:minmax(0,1fr)}}
+@media print{
+ .territory-assessment-print,.territory-edit-controls,.territory-history,#territory-status{display:none!important}
+ [data-territory-assessments] .territory-fee-card:not(.is-selected){display:none!important}
+ [data-territory-assessments] .territory-fee-cards{display:block!important}
+ [data-territory-assessments] .territory-fee-card.is-selected{box-shadow:none!important;break-inside:avoid}
+ [data-territory-assessments] .territory-fee-card h2,[data-territory-assessments] .territory-fee-intro{min-height:0!important}
+}
+
+/* Keep global button theme from turning the card titles into large action buttons. */
+html body .territory-page .territory-fee-card button[role=tab]{background:transparent!important;color:#35214e!important;padding:0!important;border:0!important;box-shadow:none!important;min-height:0!important;font:700 20px/1.3 Arial,sans-serif!important;text-transform:none!important}
+.territory-page .territory-fee-card h2{display:flex;align-items:flex-start;min-height:104px;margin:0 0 12px!important}
+.territory-page .territory-fee-card .territory-fee-intro{min-height:68px;margin:0!important;font-size:13px}
+.territory-page .territory-fee-card{padding:20px!important;font-size:13px;line-height:1.45}
+.territory-page .territory-fee-card.is-selected{border:2px solid #6b4aa0!important;background:#fbf9fd;box-shadow:0 0 0 2px #eee7f7!important}
+.territory-fee-rates li{padding:5px 0}
+.territory-assessment-actions{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}
+@media(max-width:640px){.territory-page .territory-fee-card h2,.territory-page .territory-fee-card .territory-fee-intro{min-height:0}}
+@media print{html body .territory-page .territory-fee-card button[role=tab]{font-size:12pt!important}.territory-page .territory-fee-card h2{min-height:0!important}}
+
+html body .territory-page .territory-fee-card button[role=tab]{margin:0!important}
+.territory-page .territory-fee-card{border:2px solid #ded6e5!important}
+.territory-page .territory-fee-card.is-selected{border-color:#6b4aa0!important}

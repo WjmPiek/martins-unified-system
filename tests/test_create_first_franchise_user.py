@@ -5,7 +5,7 @@ from itsdangerous import URLSafeTimedSerializer
 
 from app import create_app
 from app.extensions import db
-from app.models import Franchise, Role, User, UserModuleAccess, user_franchises
+from app.models import Franchise, Role, Permission, User, UserModuleAccess, user_franchises
 
 
 class TestConfig:
@@ -19,7 +19,10 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
     app = create_app(TestConfig)
     with app.app_context():
         db.create_all()
-        admin_role = Role(name="Admin")
+        admin_role = Role(name="Admin", permissions=[
+            Permission(module=module,action="view",code=code,label=module)
+            for module,code in [("Heat Map","heat_map:view"),("Attendance","attendance:view"),("Manuals","manuals:view")]
+        ])
         franchise_role = Role(name="Franchise User")
         admin = User(
             name="Admin",
@@ -166,4 +169,4 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         deactivated_portal = client.get("/manuals/").get_data(as_text=True)
         assert "Open Heat Map" not in deactivated_portal
         assert "Open the online application system" not in deactivated_portal
-        assert "Open Manuals" in deactivated_portal
+        assert 'href="/manuals/"' in deactivated_portal

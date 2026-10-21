@@ -1,0 +1,50 @@
+
+ @page{size:A4 portrait;margin:14mm 10mm}
+ body.app-body{background:white!important;font-size:9pt!important;line-height:1.4}
+ .app-menu,.topbar,.no-print,.live-notification-panel,.leaflet-control-zoom{display:none!important}
+ body .app-shell,body .main-panel,body .content-area{display:block!important;width:100%!important;max-width:none!important;margin:0!important;padding:0!important;min-height:0!important;overflow:visible!important}
+ .territory-page{width:100%;max-width:none}
+ .territory-page .section-header{display:block}
+ .territory-page .form-section-card{border:1px solid #ddd!important;box-shadow:none!important;border-radius:0!important;padding:10pt!important;margin-bottom:12pt!important;break-inside:auto}
+ .territory-page h1{font-size:18pt}.territory-page h2{font-size:13pt;break-after:avoid}.territory-page h3{font-size:10pt;break-after:avoid}
+ .territory-page p{margin:5pt 0}
+ .territory-page .territory-score-factor,.territory-assumptions>div{break-inside:avoid}
+ .territory-page .territory-table-wrap{overflow:visible}
+ .territory-page .territory-projection{min-width:0!important;width:100%!important;font-size:8pt;table-layout:fixed}
+ .territory-page .territory-projection th,.territory-page .territory-projection td{padding:6pt 3pt!important}
+ .territory-page .territory-projection thead{display:table-header-group}
+ .territory-page .territory-projection tr{break-inside:avoid}
+ .territory-assumptions{grid-template-columns:repeat(2,minmax(0,1fr));gap:10pt 18pt}
+ #report-map{height:70mm!important;break-inside:avoid}
+
+.territory-page,.territory-page h1,.territory-page h2,.territory-page h3,.territory-page p,.territory-page dt,.territory-page dd,.territory-page th,.territory-page td{color:#18202a!important}
+.territory-page .territory-projection th{background:#f0f0f0!important;text-transform:none!important}
+.territory-page .territory-financial-block{border-top:2pt solid #6b4aa0!important}
+.territory-page .territory-assumptions dt{min-height:2.8em!important;font-size:9pt;line-height:1.4}
+.territory-page .territory-assumptions dd{font-size:10pt}
+.territory-page .territory-projection td{white-space:normal;overflow-wrap:normal}
+
+/* The desktop shell also applies an !important sidebar offset via .ms-main. */
+html body.app-body .app-shell.ms-shell,html body.app-body .main-panel.ms-main,html body.app-body main.content-area{
+  display:block!important;width:100%!important;max-width:none!important;min-width:0!important;
+  margin:0!important;padding:0!important;position:static!important;left:auto!important;transform:none!important;
+}
+
+html body.app-body .app-shell.ms-shell .app-menu.ms-sidebar,
+html body.app-body .main-panel.ms-main .ms-topbar.ms-topbar,
+html body.app-body .main-panel.ms-main .mobile-app-header{display:none!important}
+
+.territory-fee-cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:10pt}
+.territory-page .territory-fee-card{break-inside:avoid}
+.territory-fee-amount{font-size:14pt!important}
+
+.territory-fee-card h2{min-height:2.8em;line-height:1.4}
+
+.territory-fee-intro{min-height:2.8em;line-height:1.4}
+
+.territory-fee-cards{grid-template-columns:repeat(3,minmax(0,1fr));gap:8pt}
+.territory-fee-cards .running-concern-card{grid-column:auto}
+.territory-fee-cards h2{font-size:11pt;min-height:3.9em}
+
+/* Match selected/unselected card borders in the interactive print preview. */
+.territory-page .territory-fee-cards .territory-fee-card{border-width:2px!important}

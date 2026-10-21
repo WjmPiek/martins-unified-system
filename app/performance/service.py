@@ -399,7 +399,7 @@ def annual_gross_scale_details(franchise_id, metric_key, month, target_year):
         "bracket_id": bracket.id if bracket else None,
         "bracket_label": growth_bracket_label(bracket) if bracket else f"{basis_value:,.2f}",
         "formula": "Target = same month previous year + (same month previous year x SA GDP growth %)",
-        "scale_formula": "Growth % defaults to the South Africa GDP growth standard. Admin may edit the scale table only from the Admin portal.",
+        "scale_formula": "Growth % defaults to the South African GDP growth standard. Admin may edit the scale table only from the Admin portal.",
         "growth_status": growth_status(pct),
     }
 

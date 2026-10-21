@@ -1,0 +1,14 @@
+Native territory release, 21 October 2026
+
+Production entry point: python start_web_with_worker.py
+The supervisor starts the existing Gunicorn app and a single existing Flask durable job worker on queue territory. No additional Render service is required. Unexpected child exits stop the other child, allowing Render to restart the service. Worker stale-lock recovery is scoped to its queue. Existing imports on other queues are not consumed.
+
+Pre-deploy: flask --app run.py db upgrade (already configured on the Render web service). Additive revisions v128_native_territory and v129_territory_research follow v127_insurance_app. Back up the existing database before deployment. Do not run downgrades against production.
+
+Environment: TERRITORY_VALUATION_ENABLED=true. Preserve DATABASE_URL and GOOGLE_MAPS_API_KEY. TERRITORY_PREVIEW must remain unset/false. Use run:app in production; never deploy the external local preview script, its login shortcut or its SQLite test database.
+
+Owner access requires wjm@martinsdirect.com and existing active-account, franchise and route permissions. The Monthly Figures gate additionally protects holder financial comparisons.
+
+Approved reporting design and print selection remain unchanged. Reports preserve immutable selected scenarios. Maps use authoritative stored polygons and only fetch new public polygons as needed. Population and mortality figures remain labelled estimates and source provenance is retained.
+
+Rollback: disable TERRITORY_VALUATION_ENABLED to hide territory functionality, or restore the prior Render deploy. Keep the additive territory tables and history. Set start command back to gunicorn -c gunicorn.conf.py run:app if reverting to a version without the supervisor.

@@ -951,7 +951,7 @@ def franchise_code_candidates_from_import_label(raw_name):
     first = re.split(r"[\s:\-_/]+", label, maxsplit=1)[0]
     if first:
         candidates.append(first)
-    # any compact alpha-numeric code-like token in the first part of the label
+    # any compact alphanumeric code-like token in the first part of the label
     for token in re.findall(r"[A-Z]{1,6}\d{1,6}|[A-Z0-9]{3,20}", label[:40]):
         candidates.append(token)
     compact = re.sub(r"[^A-Z0-9]+", "", label)[:20]

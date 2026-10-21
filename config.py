@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 class Config:
+    TERRITORY_VALUATION_ENABLED = os.getenv("TERRITORY_VALUATION_ENABLED", "false").lower() == "true"
+    TERRITORY_RESEARCH_OCR_ENABLED = os.getenv("TERRITORY_RESEARCH_OCR_ENABLED", "true" if os.name == "nt" else "false").lower() == "true"
     SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-change-me")
     SQLALCHEMY_DATABASE_URI = os.getenv("DATABASE_URL", "sqlite:///martins_recovery_not_configured.db")
     SQLALCHEMY_TRACK_MODIFICATIONS = False

@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+{% block app_content %}
+<link rel="stylesheet" href="{{ asset_url('css/territory.css') }}">
+<link rel="stylesheet" href="{{ asset_url('css/territory-print.css') }}" media="{{ 'all' if request.args.get('layout')=='print' else 'print' }}">
+{% if request.args.get('layout')=='print' %}<style>@media screen{body.app-body{max-width:190mm;margin:20px auto!important;padding:0!important;background:white!important}}</style>{% endif %}
+<div class="territory-page territory-report" data-territory-assessments>
+<div class="section-header"><div><h1>Franchise Territory Valuation Report</h1>
+<p>{{ payload.prospect.name if payload.get('scenario_mode')=='prospective' else franchise.business_name }} · Revision {{ snapshot.version }} · Prepared {{ territory_date(snapshot.created_at) }}</p></div>
+<div class="no-print">
+<a class="btn" href="{{ url_for('franchise.territory', franchise_id=franchise.id) }}">Back to territory</a>
+<a class="btn" href="{{ url_for('franchise.territory_report',franchise_id=franchise.id,version=snapshot.version,layout='print') }}">Preview print layout</a></div></div>
+{% if not result.get('prospective') %}<p class="territory-revision-note">This saved revision does not contain a separate new-prospective-franchise calculation. Start an area-only prospective assessment in the editor, attach the running-concern comparison if required, then save a new revision for all three calculations.</p>{% endif %}
+<p>Draft planning report. This saved revision preserves the assumptions, calculations, boundary and source findings used. Figures are estimates; the boundary requires agreement verification.</p>
+{% if config.get('TERRITORY_PREVIEW') %}<p>Local test report: financial records and agreement figures are invented. This is not an actual franchise holder valuation.</p>{% endif %}
+<section class="form-section-card"><h2>Selected territory and boundary sources</h2>{% if payload.get("include_enclosed") %}<p>Enclosed interiors are included automatically. Explicitly excluded cut-outs are subtracted. Separate areas are not connected by adding the land between them.</p>{% endif %}
+<p>{{ payload.boundary_note }}</p>
+{% if payload.geometry %}<div id="report-map" style="height:380px"></div>{% endif %}
+{% for part in payload.get('boundary_parts', []) %}<p>{{ part.name }} · {{ part.selection }} · Boundary release {{ territory_date(part.data_date) }}{% if part.effective_from %} · Effective {{ territory_date(part.effective_from) }}{% endif %}{% if part.upcoming %} · Upcoming release{% endif %}{% if part.publication_modified_at %} · Publisher updated {{ territory_date(part.publication_modified_at) }}{% endif %} · Retrieved {{ territory_date(part.retrieved_at) }}{% if part.confidence %} · {{ part.confidence }} confidence{% endif %} · <a href="{{ safe_link(part.source) }}">Boundary source</a></p>{% endfor %}
+</section>
+<div class="territory-fee-cards" role="tablist" aria-label="Territory fee assessments">
+{% for key,assessment in result.assessments.items() %}<section class="form-section-card territory-fee-card" data-assessment-card="{{ key }}">
+<h2><button type="button" role="tab" id="assessment-tab-{{ key }}" aria-controls="assessment-panel-{{ key }}" aria-selected="{{ 'true' if key=='commercial' else 'false' }}" data-select-assessment="{{ key }}">{{ assessment.label }}</button></h2>
+<p class="territory-fee-intro">{{ assessment.get('basis','No assessment data available') }}</p><p class="territory-fee-amount">{{ assessment.fee|rand if assessment.fee is not none else 'Unavailable' }}</p><p>Excluding VAT. Select to view the calculation, evidence and fairness comparison.</p>
+{% if key=='commercial' %}<p>Small: R 75,000.00 · Standard: R 150,000.00 · Large: R 200,000.00.</p>{% endif %}</section>{% endfor %}</div>
+{% include 'franchise/_territory_assessment_print.html' %}
+<div id="territory-assessment-details">{% with assessments=result.assessments %}{% include 'franchise/_territory_assessment_panels.html' %}{% endwith %}</div>
+<script src="{{ asset_url('js/territory-assessments.js') }}"></script>
+{% if payload.geometry %}<link rel="stylesheet" href="{{ asset_url('vendor/leaflet/leaflet.css') }}"><script src="{{ asset_url('vendor/leaflet/leaflet.js') }}"></script>
+<script id="report-geometry" type="application/json">{{ payload.geometry|tojson }}</script><script>
+const reportGeometry=JSON.parse(document.getElementById('report-geometry').textContent);
+let reportGoogleFailed=false,reportLeafMap;
+window.reportRoadFallback=()=>{if(reportLeafMap)return;document.getElementById('report-map').replaceChildren();reportLeafMap=L.map('report-map');L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap contributors'}).addTo(reportLeafMap);const boundary=L.geoJSON(reportGeometry,{style:{color:'#6B4AA0',fillOpacity:0.15}}).addTo(reportLeafMap);reportLeafMap.fitBounds(boundary.getBounds());};
+window.gm_authFailure=()=>{reportGoogleFailed=true;reportRoadFallback();};
+window.initTerritoryReportMap=()=>{if(reportGoogleFailed)return;const reportMap=new google.maps.Map(document.getElementById('report-map'),{center:{lat:-28.48,lng:24.67},zoom:5,mapTypeId:'roadmap'});reportMap.data.addGeoJson({type:'Feature',geometry:reportGeometry});reportMap.data.setStyle({fillColor:'#6B4AA0',fillOpacity:0.15,strokeColor:'#6B4AA0',strokeWeight:3});const bounds=new google.maps.LatLngBounds();reportMap.data.forEach(feature=>feature.getGeometry().forEachLatLng(point=>bounds.extend(point)));reportMap.fitBounds(bounds);};
+{% if not maps_key %}reportRoadFallback();{% endif %}
+</script>{% if maps_key %}<script async onerror="gm_authFailure()" src="https://maps.googleapis.com/maps/api/js?key={{ maps_key|urlencode }}&amp;callback=initTerritoryReportMap&amp;loading=async"></script>{% endif %}{% endif %}
+<style>@media print{.no-print,.leaflet-control-zoom{display:none!important}article{break-inside:avoid}.form-section-card{box-shadow:none!important}table{font-size:8pt}a{overflow-wrap:anywhere}}</style>
+</div>
+{% endblock %}
