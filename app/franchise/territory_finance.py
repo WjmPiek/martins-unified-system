@@ -25,6 +25,9 @@ DEFAULTS = {"population": 0, "mortality_per_1000": 0, "household_size": 3,
     "cost_growth": 5, "ramp_months": 3, "reserve": 5000,
     "vat_percent": 15, "vat_recoverable": True, "tax_percent": 0,
     "annual_capex": 0, "annual_working": 0, "annual_finance": 0,
+    "annual_depreciation": 0, "annual_amortisation": 0, "annual_interest": 0,
+    "territory_amortisation_months": 0,
+    "discount_percent": 0,
     "target_margin": 30, "safety_buffer": 20, "confirmed": False,
     "start_year": 2027, "start_month": 1}
 
@@ -56,10 +59,10 @@ def validate_inputs(raw):
                     raise ValueError(f"{key}: use -50 to 50 percent")
             elif a[key] < 0:
                 raise ValueError(f"{key}: cannot be negative")
-    for key in ["market_share", "cremation_share", "tax_percent", "target_margin", "safety_buffer", "interest_percent", "expense_percent"]:
+    for key in ["market_share", "cremation_share", "tax_percent", "target_margin", "safety_buffer", "interest_percent", "expense_percent", "discount_percent"]:
         if a[key] > 100:
             raise ValueError(f"{key}: cannot exceed 100 percent")
-    for key, low, high in [("repayment_months", 1, 60), ("ramp_months", 0, 60),
+    for key, low, high in [("repayment_months", 1, 60), ("ramp_months", 0, 60), ("territory_amortisation_months", 0, 600),
                            ("start_year", 2000, 2200), ("start_month", 1, 12)]:
         if a[key] != int(a[key]) or not low <= a[key] <= high:
             raise ValueError(f"{key}: use a whole number from {low} to {high}")
@@ -173,34 +176,53 @@ def forecast(franchise, raw, sales_factor=Decimal(1), royalty_cache=None, planni
                 overhead=max(Decimal(0),expense_budget-royalty)
                 if royalty>expense_budget:
                     errors.add('Contractual royalty exceeds the total operating-expense assumption; review the expense percentage')
-            operating = revenue - direct - royalty - overhead
-            tax = money(max(Decimal(0), operating) * a["tax_percent"] / 100)
-            adjustments = money(tax + (a["annual_capex"] + a["annual_working"] + a["annual_finance"]) / 12)
-            reserve = money(max(Decimal(0), a["reserve"] * cost_growth - adjustments))
-            free = operating - adjustments - reserve
-            economics[month]=(volume, revenue, direct, royalty, overhead, operating, tax, adjustments, reserve, free,tuple(errors))
-        volume, revenue, direct, royalty, overhead, operating, tax, adjustments, reserve, free,cached_errors=economics[month]
+            ebitda = revenue - direct - royalty - overhead
+            reserve = money(a["reserve"] * cost_growth)
+            economics[month]=(volume, revenue, direct, royalty, overhead, ebitda, reserve,tuple(errors))
+        volume, revenue, direct, royalty, overhead, ebitda, reserve,cached_errors=economics[month]
         errors.update(cached_errors)
         interest = money(balance * rate) if month < term else Decimal(0)
+        depreciation = money(a['annual_depreciation'] / 12)
+        right_term = a['territory_amortisation_months']
+        right_monthly = money(principal / right_term) if right_term else Decimal(0)
+        right_amortisation = (principal - right_monthly * (right_term - 1) if month == right_term - 1 else right_monthly) if right_term and month < right_term else Decimal(0)
+        amortisation = money(a['annual_amortisation'] / 12) + right_amortisation
+        noncash = depreciation + amortisation
+        operating = ebitda - noncash
+        other_interest = money(a['annual_interest'] / 12)
+        total_interest = other_interest + interest
+        before_tax = operating - total_interest
+        tax = money(max(Decimal(0), before_tax) * a['tax_percent'] / 100)
+        net_profit = before_tax - tax
+        operating_cash = net_profit + noncash
+        capex, working, other_principal = (money(a[key] / 12) for key in ('annual_capex','annual_working','annual_finance'))
+        cash_deductions = capex + working + other_principal + reserve
+        free = operating_cash - cash_deductions
         repayment = Decimal(0)
         if balance > 0 and month < term:
             repayment = balance + interest if month == term - 1 else min(balance + interest, payment)
             balance = money(balance + interest - repayment)
-        retained = free - repayment
+        principal_repayment = repayment - interest
+        retained = free - principal_repayment
         cash_balance += retained
         minimum_balance = min(minimum_balance, cash_balance)
         if payback is None and cash_balance >= 0:
             payback = month + 1
         rows.append(dict(month=month + 1, services=volume, revenue=money(revenue), direct=money(direct),
-            royalty=money(royalty), overhead=money(overhead), operating=money(operating), tax=money(tax),
-            adjustments=money(adjustments), reserve=money(reserve), cash_deductions=money(adjustments-tax+reserve), free=money(free),
-            repayment=money(repayment), interest=interest, principal_balance=balance,
+            royalty=money(royalty), overhead=money(overhead), ebitda=money(ebitda),
+            depreciation=depreciation, amortisation=amortisation, territory_amortisation=right_amortisation, noncash=noncash,
+            operating=money(operating), other_interest=other_interest, total_interest=total_interest,
+            profit_before_tax=money(before_tax), tax=money(tax), net_profit=money(net_profit),
+            operating_cash=money(operating_cash), capex=capex, additional_working=working, other_principal=other_principal,
+            adjustments=money(tax+capex+working+other_principal), reserve=reserve, cash_deductions=cash_deductions,
+            free=money(free), cash_available=money(free),
+            repayment=money(repayment), interest=interest, principal_repayment=money(principal_repayment), principal_balance=balance,
             retained=money(retained), cumulative=money(cash_balance)))
     years = []
     for year in range(5):
         group = rows[year * 12:(year + 1) * 12]
         years.append({"year": year + 1, **{key: sum(r[key] for r in group) for key in
-            ["services", "revenue", "direct", "royalty", "overhead", "operating", "tax", "cash_deductions", "repayment", "interest", "retained"]}})
+            ["services", "revenue", "direct", "royalty", "overhead", "ebitda", "depreciation", "amortisation", "territory_amortisation", "noncash", "operating", "other_interest", "total_interest", "profit_before_tax", "tax", "net_profit", "operating_cash", "capex", "additional_working", "other_principal", "reserve", "cash_available", "cash_deductions", "principal_repayment", "repayment", "interest", "retained"]}})
     cash_available = sum(r["free"] for r in rows)
     capacity = max(Decimal(0), (cash_available - (a["setup"] + a["working_capital"] + a["joining_fee"])) / fee_factor)
     # Short-term affordability: opening working capital must cover every monthly
@@ -210,7 +232,7 @@ def forecast(franchise, raw, sales_factor=Decimal(1), royalty_cache=None, planni
     for row in rows:
         liquid += row["retained"]
         minimum_liquid = min(minimum_liquid, liquid)
-    return dict(months=rows, years=years, errors=sorted(errors), capacity=money(capacity),
+    return dict(accounting_version='martins-accounting-v2', months=rows, years=years, errors=sorted(errors), capacity=money(capacity),
         initial=money(initial), ending_cash=money(cash_balance), payback_months=payback,
         minimum_liquid=money(minimum_liquid), additional_funding=max(Decimal(0), -money(minimum_liquid)),
         affordable=minimum_liquid >= 0 and cash_balance >= 0 and not errors,
@@ -218,18 +240,13 @@ def forecast(franchise, raw, sales_factor=Decimal(1), royalty_cache=None, planni
         annual_deaths=a["population"] * a["mortality_per_1000"] / 1000)
 
 
-def profit_margin_fee(years):
-    """Owner-requested option: sum annual positive operating profit times its margin.
-
-    Operating profit includes monthly royalties and operating costs, but precedes
-    tax, reserves, financing and territory repayments to avoid a circular price.
-    No positive fee is generated by a loss or zero/non-positive turnover.
-    """
+def profit_margin_fee(years, discount_percent=0):
+    """Martins pricing policy using positive after-tax profit and its annual margin."""
     rows = []
     previous = None
     for year in years:
         turnover = Decimal(str(year['revenue']))
-        profit = Decimal(str(year['operating']))
+        profit = Decimal(str(year['net_profit']))
         margin = profit / turnover if turnover > 0 else None
         contribution = money(profit * margin) if turnover > 0 and profit > 0 else Decimal('0.00')
         rows.append(dict(year=year['year'], turnover=money(turnover), profit=money(profit),
@@ -237,14 +254,19 @@ def profit_margin_fee(years):
             turnover_growth_percent=(turnover / previous - 1) * 100 if previous is not None and previous > 0 else None,
             fee_contribution=contribution))
         previous = turnover
-    return dict(method='profit_margin', years=rows, total=sum((r['fee_contribution'] for r in rows), Decimal('0.00')),
-        formula='Annual contribution = positive operating profit × (operating profit ÷ turnover); total = sum of five annual contributions.',
-        profit_basis='Operating profit after direct costs, overheads, owner salary where included and monthly royalties; before tax, reserves, financing and territory repayments.',
+    discount = number(discount_percent, 'Discount rate')
+    if not 0 <= discount <= 100: raise ValueError('Discount rate must be from 0 to 100 percent')
+    discounted = money(sum((row['fee_contribution'] / (1 + discount / 100) ** row['year'] for row in rows), Decimal(0))) if discount > 0 else None
+    return dict(method='profit_margin', profit_measure='net_profit_after_tax', years=rows, total=sum((r['fee_contribution'] for r in rows), Decimal('0.00')),
+        discount_percent=discount, discounted_total=discounted,
+        discount_note='Optional discounted contribution comparison only; it does not replace the Martins pricing total or establish the value of the whole business. Enter a justified risk/discount rate; zero means no discounted comparison.',
+        formula='Annual contribution = positive net profit after tax × (net profit after tax ÷ turnover); total = sum of five annual contributions.',
+        profit_basis='Net profit after operating costs, owner salary where included, royalties, entered depreciation/amortisation, existing borrowing interest and modelled income tax. The pricing basis excludes interest and amortisation on the proposed territory purchase to avoid a circular price; the repayment projection includes its financing interest separately.',
         turnover_basis='Forecast business income: funeral services and other sales plus net policy administration income/commission. Premiums paid over to an insurer are excluded.',
-        provenance='Owner-requested planning method, confirmed 21 October 2026; not verified as a FASA-prescribed formula.',
+        provenance='Martins owner-approved net-profit pricing policy, 21 October 2026; not verified as a FASA-prescribed formula. Tax is a flat-rate planning provision, not a tax return calculation.',
         fasa_source='https://www.fasa.co.za/assessments/DDSelf-AssessmentChecklist.pdf',
         fasa_checked_at='2026-10-21', confidence='planning assumption',
-        status='Illustrative fee calculation; separate affordability and evidence checks still apply. Amount excludes VAT; no present-value discount is applied. Contributions use unrounded margins; displayed percentages are rounded.')
+        status='Illustrative fee calculation; separate affordability and evidence checks still apply. Amount excludes VAT. Contributions use unrounded margins; displayed percentages are rounded.')
 
 
 def affordability_checks(base, stress, a, owner_budget=False):
@@ -301,12 +323,13 @@ def calculate(franchise, inputs, scores, evidence, planning_royalty=None):
     royalty_cache = {}
     expected = forecast(franchise, inputs, royalty_cache=royalty_cache, planning_royalty=planning_royalty)
     downside = forecast(franchise, inputs, Decimal("0.8"), royalty_cache, planning_royalty=planning_royalty)
-    profit_fee = profit_margin_fee(expected['years'])
+    fee_basis = forecast(franchise, {**inputs, 'territory_fee':0}, royalty_cache=royalty_cache, planning_royalty=planning_royalty)
+    profit_fee = profit_margin_fee(fee_basis['years'], a['discount_percent'])
     profit_fee['selected'] = a['fee_method'] == 'fair_territory'
     affordability = affordable_territory_ceiling(franchise, inputs, a, royalty_cache, planning_royalty=planning_royalty)
     ceiling = affordability['ceiling']
     fair_fee = min(profit_fee['total'], ceiling) if ceiling is not None else None
-    profit_fee.update(fair_method_version='martins-fair-territory-v1', affordable_ceiling=ceiling,
+    profit_fee.update(fair_method_version='martins-fair-territory-v2', affordable_ceiling=ceiling,
         fair_fee=fair_fee, reduction=profit_fee['total']-fair_fee if fair_fee is not None else None,
         affordability=affordability,
         fair_formula='Optional Territory Fee = lower of five-year profit-margin valuation and affordable fee ceiling.',
@@ -368,7 +391,16 @@ def calculate(franchise, inputs, scores, evidence, planning_royalty=None):
             "minimum": str(franchise.minimum_royalty_amount), "minimum_is_none": franchise.minimum_royalty_is_none,
             "scale_source_id": getattr(scale_source, "id", None), "scale_source": scale_label,
             "scales": [{"from": s.amount_from, "to": s.amount_to, "percent": s.percentage} for s in scales]}
-    return dict(formula_version="martins-territory-v4", fee_method=a["fee_method"], commercial_fee=commercial, profit_margin_fee=profit_fee, royalty_policy=policy, scorecard=card, expected=expected,
+    notes = [
+        'Operating costs are cash costs; percentage mode includes service costs, owner salary and royalties once, and keeps the selected cost-to-revenue ratio as revenue grows. Cost growth applies to manual cash costs and reserves; entered annual depreciation, amortisation and other interest stay at their entered annual amounts. Depreciation, amortisation, interest and tax are separate.',
+        'Net profit is after all modelled interest and tax. Cash available adds back depreciation/amortisation, then deducts capital expenditure, additional working capital, other loan principal and the full cash reserve. Territory principal is deducted last; its interest is already an expense.',
+        'Turnover excludes VAT and insurer payover. Confirm input prices/costs are VAT-exclusive. Tax uses the entered flat rate on positive accounting profit before tax as a planning proxy; tax adjustments, assessed losses, SBC/turnover-tax rules and tax-payment timing require review.',
+        'Owner salary is compensation for work, included once in costs. Owner drawings/dividends are not salary expenses. Annual depreciation/amortisation entries cover existing assets/rights. The separate territory-right term models straight-line amortisation from the projection start with zero residual value; confirm capitalisation, useful life and available-for-use date against the agreement. It is independent of the loan term.',
+    ]
+    if a['tax_percent'] == 0: notes.append('A 0% tax rate is entered: no income-tax provision is included. Confirm this assumption before relying on net profit or the fee.')
+    if not a['annual_depreciation'] and not a['annual_amortisation']: notes.append('Depreciation and amortisation are entered as zero; confirm the asset and intangible-right schedules.')
+    if not a['territory_amortisation_months']: notes.append('Territory-right amortisation term is zero: no amortisation of the proposed right is modelled. Confirm its accounting treatment and useful life before relying on projected net profit.')
+    return dict(formula_version="martins-territory-v5", accounting_version='martins-accounting-v2', accounting_notes=notes, fee_method=a["fee_method"], commercial_fee=commercial, profit_margin_fee=profit_fee, royalty_policy=policy, scorecard=card, expected=expected,
                 downside=downside, recommended_fee=recommended, recommendation_reason=reason)
 
 

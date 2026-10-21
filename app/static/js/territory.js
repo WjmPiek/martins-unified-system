@@ -50,11 +50,13 @@
     document.querySelectorAll('[data-input]').forEach(el => {
       inputs[el.dataset.input] = el.type === 'checkbox' ? el.checked : el.dataset.format ? fieldNumber(el) : el.type === 'number' ? (el.value.trim() === '' ? null : Number(el.value)) : el.value;
     });
+    const runningAssumptions={};
+    document.querySelectorAll('[data-running-input]').forEach(el=>{runningAssumptions[el.dataset.runningInput]=el.dataset.format?fieldNumber(el):el.value;});
     const scores = {}, evidence = {};
     document.querySelectorAll('[data-score]').forEach(el => { if (el.value !== '' && Number.isFinite(Number(el.value))) scores[el.dataset.score] = Number(el.value); });
     document.querySelectorAll('[data-score-evidence]').forEach(el => { evidence[el.dataset.scoreEvidence] = el.value; });
     return { inputs, scores, score_evidence: evidence, geometry: geometry(), sources: JSON.parse(byId('sources').value), boundary_note: byId('boundary-note').value,
-      boundary_parts: areas.filter(a => a.selection !== 'context'), research_run_id: researchRunId, service_price_selections: servicePriceSelections, financial_baseline:scenarioMode==='prospective'?null:financialBaseline, comparison_baseline:comparisonBaseline, scenario_mode:scenarioMode,
+      boundary_parts: areas.filter(a => a.selection !== 'context'), research_run_id: researchRunId, service_price_selections: servicePriceSelections, financial_baseline:scenarioMode==='prospective'?null:financialBaseline, comparison_baseline:comparisonBaseline, running_assumptions:runningAssumptions, scenario_mode:scenarioMode,
       ...(scenarioMode==='prospective'?{prospect:{name:byId('prospect-name').value,royalty_percent:fieldNumber(byId('prospect-royalty'))}}:{}), area_linked_figures:true, include_enclosed:includeEnclosed, area_province:byId('research-province').value };
   }
   function fieldNumber(el){
@@ -137,7 +139,7 @@
       const fee=result.profit_margin_fee;calculatedProfitFee=fee.fair_method_version?fee.fair_fee:null;
       byId('profit-margin-fee-status').textContent=fee.selected?'Optional Territory Fee selected. Apply the capped amount below to test its repayments.':'Comparison only. The selected purchase-fee method is unchanged.';
       byId('profit-margin-fee-years').replaceChildren();
-      Object.entries({turnover:'Turnover / business income',profit:'Operating profit',turnover_growth_percent:'Turnover growth (%)',margin_percent:'Profit margin (%)',fee_contribution:'Fee contribution'}).forEach(([key,label])=>{
+      Object.entries({turnover:'Turnover / business income',profit:fee.profit_measure==='net_profit_after_tax'?'Net profit after tax':'Operating profit (legacy basis)',turnover_growth_percent:'Turnover growth (%)',margin_percent:'Profit margin (%)',fee_contribution:'Fee contribution'}).forEach(([key,label])=>{
         const row=document.createElement('tr'),heading=document.createElement('th');heading.scope='row';heading.textContent=label;row.append(heading);
         fee.years.forEach(year=>{const cell=document.createElement('td');cell.textContent=year[key]==null?'—':key.endsWith('_percent')?Number(year[key]).toFixed(2)+'%':rand(year[key]);row.append(cell);});byId('profit-margin-fee-years').append(row);
       });
@@ -149,6 +151,8 @@
       const apply=byId('apply-profit-margin-fee');if(apply)apply.disabled=!ctx.editable||calculatedProfitFee==null||!Number.isFinite(Number(calculatedProfitFee))||Number(calculatedProfitFee)>1e12;
     }
 
+    if(byId('accounting-basis'))byId('accounting-basis').textContent=(result.accounting_notes||[]).join(' ');
+    if(byId('discounted-fee-comparison'))byId('discounted-fee-comparison').textContent=result.profit_margin_fee?.discounted_total!=null?'Discounted contribution comparison at '+decimal(result.profit_margin_fee.discount_percent)+'%: '+rand(result.profit_margin_fee.discounted_total)+'. Comparison only; the Martins fee uses the undiscounted contribution total and affordability cap.':'No discounted comparison: enter a justified discount rate above zero. This does not change the Martins pricing formula.';
     if(result.research)renderResearch(result.research,result.research.context);
     if(result.calculated_inputs)Object.entries(result.calculated_inputs).forEach(([key,value])=>{const el=byId('input-'+key);if(el)setFieldValue(el,value);});
     if(result.area_estimate){const e=result.area_estimate;byId('area-estimate-status').textContent=`Selected area: ${e.inputs.population.toLocaleString('en-ZA')} modelled residents; about ${e.estimated_households.toLocaleString('en-ZA')} households; ${e.estimated_annual_deaths.toLocaleString('en-ZA')} estimated resident deaths/year. First projected month: ${Number(result.expected.months[0].services).toFixed(2)} funeral services; income ${rand(result.expected.months[0].revenue)}. ${e.mortality_verified?'Provincial mortality source checked.':'Mortality uses the dated Compass reference and still needs online verification.'} Whole selected boundary calculated, including all separate selected areas; overlaps count once and cut-outs are subtracted. Actual franchise income is unchanged.`;}
@@ -158,7 +162,7 @@
     byId('recommendation').textContent = `${result.scorecard.score === null ? 'Incomplete scorecard' : 'Commercial potential: '+Number(result.scorecard.score).toFixed(1)+'/100 ('+result.scorecard.band+')'}. ${result.recommended_fee === null ? 'No recommended price.' : 'Provisional price: '+rand(result.recommended_fee)+'.'} ${result.recommendation_reason}`;
     byId('calculation-errors').textContent = result.expected.errors.length ? 'Needs review: '+result.expected.errors.join('; ') : 'Existing agreement method and royalty brackets applied.';
     byId('forecast-years').replaceChildren();
-    const metrics={revenue:'Income',direct:'Direct costs',royalty:'Monthly royalty expense',overhead:'Other operating expenses',operating:'Operating profit',tax:'Tax',cash_deductions:'Other cash deductions / reserve',repayment:'Territory repayments',retained:'Cash retained'};
+    const metrics=result.accounting_version?{revenue:'Income (excluding VAT)',direct:'Direct cash costs',royalty:'Monthly royalty expense',overhead:'Other cash operating expenses',noncash:'Depreciation / amortisation',operating:'Operating profit',total_interest:'Total borrowing interest',profit_before_tax:'Profit before tax',tax:'Income-tax provision',net_profit:'Net profit after tax',operating_cash:'Cash from profit (non-cash costs added back)',capex:'Capital expenditure',additional_working:'Additional working capital',other_principal:'Other loan principal',reserve:'Cash reserve allocation',cash_available:'Cash available before territory principal',principal_repayment:'Territory principal repayments',retained:'Cash retained'}:{revenue:'Income',direct:'Direct costs',royalty:'Monthly royalty expense',overhead:'Other operating expenses',operating:'Operating profit',tax:'Tax',cash_deductions:'Other cash deductions / reserve',repayment:'Territory repayments',retained:'Cash retained'};
     Object.entries(metrics).forEach(([key,label])=>{const row=document.createElement('tr'),heading=document.createElement('th');heading.scope='row';heading.textContent=label;row.append(heading);result.expected.years.forEach(year=>{const cell=document.createElement('td');cell.textContent=rand(year[key]);row.append(cell);});byId('forecast-years').append(row);});
     byId('forecast-summary').textContent = `Expected: ${result.expected.affordable ? 'funding and recovery checks pass' : 'funding/recovery requires review'}. Investment ${rand(result.expected.initial)}; five-year cash after investment ${rand(result.expected.ending_cash)}; additional working capital needed ${rand(result.expected.additional_funding)}. Payback: ${result.expected.payback_months === null ? 'beyond five years' : result.expected.payback_months+' months'}.`;
     byId('downside-summary').textContent = `Downside (20% lower sales): five-year cash after investment ${rand(result.downside.ending_cash)}; additional working capital needed ${rand(result.downside.additional_funding)}. Draft planning estimate; review source coverage and agreement boundaries.`;
@@ -565,6 +569,7 @@
       byId('territory-results').hidden=true;status('Recorded franchise baseline applied with 70% expenses and Compass repayment assumptions. Review the refreshed forecast before saving.');await run(false);
     }catch(error){byId('financial-baseline-status').textContent=error.message;}
   });
+  document.querySelectorAll('[data-running-input]').forEach(el=>el.addEventListener('change',()=>{if(saving)return;inputRevision++;invalidateScoreRecommendations();run(false);}));
   byId('find-suburbs')?.addEventListener('click',()=>findAreas(true));
   byId('compose-boundary')?.addEventListener('click',composeBoundary);
   byId('research-territory')?.addEventListener('click',researchTerritory);
@@ -597,7 +602,7 @@
     byId('input-confirmed').checked=false;invalidateScoreRecommendations();run(false);
   });
 
-  document.querySelectorAll('[data-input],[data-score],[data-score-evidence],#geometry,#sources,#boundary-note').forEach(el => el.addEventListener('input', () => { inputRevision++;window.TerritoryAssessments?.invalidate();if(el.dataset.input && el.dataset.input!=='confirmed'){byId('input-confirmed').checked=false;invalidateScoreRecommendations();}byId('territory-results').hidden = true; status('Inputs changed. Review assumptions and recalculate before reviewing the forecast.'); }));
+  document.querySelectorAll('[data-input],[data-running-input],[data-score],[data-score-evidence],#geometry,#sources,#boundary-note').forEach(el => el.addEventListener('input', () => { inputRevision++;window.TerritoryAssessments?.invalidate();if(el.dataset.input && el.dataset.input!=='confirmed'){byId('input-confirmed').checked=false;invalidateScoreRecommendations();}byId('territory-results').hidden = true; status('Inputs changed. Review assumptions and recalculate before reviewing the forecast.'); }));
   renderScenario();
   renderSources(ctx.payload.sources || []);
   if (ctx.savedResult) render(ctx.savedResult);

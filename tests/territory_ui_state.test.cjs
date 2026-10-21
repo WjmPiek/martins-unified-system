@@ -7,9 +7,10 @@ function harness(initialPayload={},fields=[],initialUrl=null){
   const element=id=>{if(!elements.has(id))elements.set(id,{value:'',textContent:'',hidden:true,checked:false,inert:false,dataset:{},addEventListener(type,handler){(this.listeners??={})[type]=handler;},replaceChildren(){this.children=[];},append(...items){(this.children??=[]).push(...items);},setAttribute(){},setCustomValidity(message){this.validationMessage=message;}});return elements.get(id);};
   element('territory-context').textContent=JSON.stringify({payload:{sources:[],boundary_parts:[],...initialPayload},hasMaps:true,editable:true,calculateUrl:'/calculate',saveUrl:'/save',composeUrl:'/compose',researchUrl:'/research'});
   element('research-province').value='Gauteng';
-  fields.forEach(spec=>Object.assign(element('input-'+spec.dataset.input),spec));
-  const fieldElements=fields.map(spec=>element('input-'+spec.dataset.input));
-  const sandbox={document:{getElementById:element,querySelector:()=>element('page'),querySelectorAll:selector=>['[data-input]','[data-format]'].includes(selector)?fieldElements:[],createTextNode:text=>({textContent:text}),createElement:()=>element(Symbol())},window:{location:{reload(){throw Error('Unexpected reload');}}},Intl,URL,AbortController,setTimeout,clearTimeout,fetch:(url,options)=>new Promise(resolve=>requests.push({url,options,resolve}))};
+  const fieldId=spec=>spec.dataset.runningInput?'running-'+spec.dataset.runningInput:'input-'+spec.dataset.input;
+  fields.forEach(spec=>Object.assign(element(fieldId(spec)),spec));
+  const fieldElements=fields.map(spec=>element(fieldId(spec)));
+  const sandbox={document:{getElementById:element,querySelector:()=>element('page'),querySelectorAll:selector=>selector==='[data-input]'?fieldElements.filter(el=>el.dataset.input):selector==='[data-format]'?fieldElements:selector==='[data-running-input]'?fieldElements.filter(el=>el.dataset.runningInput):[],createTextNode:text=>({textContent:text}),createElement:()=>element(Symbol())},window:{location:{reload(){throw Error('Unexpected reload');}}},Intl,URL,AbortController,setTimeout,clearTimeout,fetch:(url,options)=>new Promise(resolve=>requests.push({url,options,resolve}))};
   if(initialUrl){sandbox.window.location.href=initialUrl;sandbox.window.history={replaceState(_state,_title,url){sandbox.window.location.href=String(url);}};}
   sandbox.globalThis=sandbox;
   let source=fs.readFileSync('app/static/js/territory.js','utf8');
@@ -327,4 +328,17 @@ test('fresh prospective link is consumed once so saved revisions reload normally
   assert.equal(url.searchParams.has('scenario'),false);
   assert.equal(url.searchParams.get('assessment'),'running');
   assert.equal(url.pathname,'/franchise/55/territory');
+});
+
+
+test('running-concern accounting fields recalculate independently of prospective assumptions',async()=>{
+  const h=harness({},[{dataset:{input:'tax_percent',format:'percentage'},value:'27'},
+    {dataset:{runningInput:'tax_percent',format:'percentage'},value:'20'},
+    {dataset:{runningInput:'annual_depreciation',format:'currency'},value:'12000'}]);
+  const editing=h.element('running-tax_percent').listeners.change();
+  assert.equal(h.requests[0].url,'/calculate');
+  const sent=JSON.parse(h.requests[0].options.body);
+  assert.equal(sent.inputs.tax_percent,27);assert.equal(sent.running_assumptions.tax_percent,20);
+  assert.equal(sent.running_assumptions.annual_depreciation,12000);
+  finish(h.requests[0],result);await editing;
 });

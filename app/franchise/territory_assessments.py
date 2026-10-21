@@ -31,6 +31,7 @@ def build_assessments(franchise, payload, result):
     # Comparisons must never be interpreted as the prospective model's source.
     public['financial_baseline']=None
     public['comparison_baseline']=None
+    public.pop('running_assumptions',None)
     public['inputs']['demand_basis']='territory'
     public['inputs']['recorded_monthly_services']=0
     guidance_research={**(research or {}),'records':[
@@ -63,6 +64,7 @@ def build_assessments(franchise, payload, result):
         planning_royalty=public['prospect']['royalty_percent'])
     for key in ('commercial','prospective'):
         data=deepcopy(payload if key=='commercial' else public)
+        data.pop('running_assumptions',None)
         fee=COMMERCIAL_FEES[data['inputs']['commercial_category']] if key=='commercial' else initial['profit_margin_fee']['fair_fee']
         if fee is None:
             entries[key]=dict(key=key,label=LABELS[key],available=False,fee=None,
