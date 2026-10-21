@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "death_year": 2024,
+  "population_year": 2024,
+  "population_series": 2024,
+  "verified_at": "2026-10-20T19:15:14.827250+00:00",
+  "documents": [
+    {
+      "file": "P030932024.pdf",
+      "url": "https://www.statssa.gov.za/publications/P03093/P030932024.pdf",
+      "sha256": "8f80a77436398c61d527c412b9421360417aa48c643caef141b6320f8aab1614",
+      "publication_date": "2026-09-22",
+      "table": "Table 3.6, PDF page 30 (printed page 23)"
+    },
+    {
+      "file": "P03022024.pdf",
+      "url": "https://www.statssa.gov.za/publications/P0302/P03022024.pdf",
+      "sha256": "41c0e8f8055d39a4accd15b694cc86084a416c575a9b3a3f89f40fd3de68ce12",
+      "publication_date": "2024-07-30",
+      "table": "Appendix 1, PDF page 35 (printed page 28)"
+    }
+  ],
+  "provinces": {
+    "Western Cape": {
+      "resident_deaths": 56011,
+      "population": 7562588
+    },
+    "Eastern Cape": {
+      "resident_deaths": 77180,
+      "population": 7176230
+    },
+    "Northern Cape": {
+      "resident_deaths": 14407,
+      "population": 1372943
+    },
+    "Free State": {
+      "resident_deaths": 28228,
+      "population": 3044050
+    },
+    "KwaZulu-Natal": {
+      "resident_deaths": 88827,
+      "population": 12312712
+    },
+    "North West": {
+      "resident_deaths": 31811,
+      "population": 4155303
+    },
+    "Gauteng": {
+      "resident_deaths": 96252,
+      "population": 15931824
+    },
+    "Mpumalanga": {
+      "resident_deaths": 31197,
+      "population": 5057662
+    },
+    "Limpopo": {
+      "resident_deaths": 45565,
+      "population": 6402594
+    }
+  }
+}

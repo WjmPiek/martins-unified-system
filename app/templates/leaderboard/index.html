@@ -26,7 +26,7 @@
         <option value="{{ year }}" {% if selected_year == year %}selected{% endif %}>{{ year }}</option>
       {% endfor %}
     </select>
-    <label for="compareTo"><strong>Movement Compare</strong></label>
+    <label for="compareTo"><strong>Compare ranking with</strong></label>
     <select id="compareTo" name="compare_to">
       <option value="previous_month" {% if compare_to == 'previous_month' %}selected{% endif %}>Previous month</option>
       <option value="same_month_last_year" {% if compare_to == 'same_month_last_year' %}selected{% endif %}>Same month last year</option>

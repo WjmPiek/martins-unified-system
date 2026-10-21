@@ -44,7 +44,7 @@
         <div class="modal-backdrop" id="modules-user-{{ user.id }}" aria-hidden="true">
           <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modules-title-{{ user.id }}">
             <div class="modal-header"><div><h2 id="modules-title-{{ user.id }}">Activated Modules</h2><p>{{ user.full_name }} · {{ user.email }}</p></div><button type="button" class="modal-close" onclick="closeUserModal('modules-user-{{ user.id }}')">x</button></div>
-            <p>Manuals is compulsory for every Franchise User. Admin can activate the other optional modules manually.</p>
+            <p>The Manuals module is compulsory for every Franchise User. Admin can activate the other optional modules manually.</p>
             <form method="post" action="{{ url_for('admin.update_franchise_user_modules', user_id=user.id) }}">
               <div class="modal-role-grid">
                 {% for code, label, description in required_modules %}

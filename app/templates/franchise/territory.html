@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+{% block app_content %}
+<link rel="stylesheet" href="{{ asset_url('css/territory.css') }}">
+<link rel="stylesheet" href="{{ asset_url('css/territory-print.css') }}" media="print">
+<div class="territory-page" data-territory-assessments>
+<style>
+.territory-search{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:16px}
+.territory-search label,.territory-area-row label{display:flex;flex-direction:column;gap:6px;text-align:left;min-width:0}
+.territory-search select,.territory-search input{width:100%}
+.territory-area-row{display:flex;flex-wrap:wrap;align-items:center;gap:16px;margin:12px 0}
+.territory-area-row label{flex:1 1 300px}
+.territory-area-label{position:absolute;transform:translate(-50%,-50%);pointer-events:none;white-space:nowrap;font:500 10px/1.3 Arial,sans-serif;color:#27445c;background:rgba(255,255,255,.88);border:0;border-radius:4px;padding:2px 4px;max-width:128px;overflow:hidden;text-overflow:ellipsis}
+.territory-map-description{max-width:270px;color:#263443;font:13px/1.4 Arial,sans-serif}
+.territory-map-toggle{display:flex;align-items:center;justify-content:flex-start;gap:8px;text-align:left;margin:12px 0}
+.territory-map-toggle input[type=checkbox]{width:18px;height:18px;flex:0 0 18px;margin:0}
+</style>
+<div class="section-header"><div>
+  <h1>Territory &amp; Valuation</h1>
+  <p class="muted" id="territory-scenario-heading">{{ 'Prospective territory: ' + payload.prospect.name if payload.get('scenario_mode')=='prospective' else 'Franchise holder: ' + franchise.business_name }} · Planning revision {{ version }} · Draft for review</p>
+</div><a class="btn" href="{{ url_for('franchise.details', franchise_id=franchise.id) }}">Franchise Details</a></div>
+{% if config.get('TERRITORY_PREVIEW') %}<p>Local test preview: financial records and agreement figures are invented for testing. Public research findings retain their real sources. This is not a valuation of an actual franchise holder.</p>{% endif %}
+<div class="form-section-card">
+  <h2>Territory boundary</h2>
+  <p>Roads and suburbs provide geographic context. Confirm the franchise boundary against its agreement before using a valuation.</p>
+  {% if editable %}<div class="territory-search">
+    <label>Area name or municipality code <input id="boundary-query" placeholder="Rand West City or GT485" maxlength="180"></label>
+    <label>Search for <select id="boundary-kind"><option value="auto">Town, suburb or municipality (automatic)</option><option value="municipality">Official municipality</option><option value="ward">Official wards by municipality</option><option value="town">Historical town (Census 2011)</option><option value="suburb">Historical suburb (Census 2011)</option></select></label>
+    <label>Official boundary release <select id="boundary-release"><option value="current">Currently effective</option><option value="2026">Published 2026 (effective 4 November 2026)</option></select></label>
+  </div><button class="btn" id="find-boundaries" type="button">Find geographical areas</button>
+  <button class="btn" id="find-suburbs" type="button">Refresh neighbouring area outlines</button>
+  <p id="boundary-status" role="status"></p><div id="boundary-areas" style="max-height:350px;overflow:auto"></div>
+  <button class="btn" id="compose-boundary" type="button">Apply included areas and cut-outs</button>{% endif %}
+  <div class="territory-selection-panel"><p id="territory-selection-summary" role="status"></p><div id="territory-selected-areas" aria-label="Currently selected territory areas"></div><button class="btn secondary" id="show-selected-territory" type="button">Show whole selected territory</button></div>
+  <p>A successful town search starts a new territory and removes the previous town from the draft. Saved revisions remain in history. The full shaded interior, including enclosed areas, is used for population, funeral demand and income calculations. Explicit cut-outs remain excluded.</p>
+  <p>Neighbouring boundaries and area names are displayed automatically as you move or zoom the map.</p>
+  {% if editable %}<p id="whole-area-note" hidden>A whole town or municipality is currently included. To build the territory from individual suburbs, choose <button class="btn" id="start-suburb-selection" type="button">Select suburbs individually</button>.</p>{% else %}<p id="whole-area-note" hidden></p>{% endif %}
+  <p>Click a suburb outline to include or remove it. The thick purple territory border updates automatically; blue outlines show neighbouring areas. Included areas share one border and excluded areas remain cut-outs.</p>
+  <div id="territory-map" style="height:clamp(480px,65vh,700px);border-radius:12px;background:#eee" aria-label="Franchise territory road map"></div>
+  <p id="map-status" role="status">Loading road map…</p>
+  <p id="map-area-description" role="status">Hover over an area for its name, municipality, boundary date and selection status. Click an open location to find its published suburb boundary.</p>
+  <details><summary>Import boundary from Franchise Compass or GeoJSON</summary>
+    <label>Boundary GeoJSON <textarea id="geometry" rows="5" {% if not editable %}readonly{% endif %}></textarea></label>
+    {% if editable %}<button class="btn" id="preview-boundary" type="button">Preview boundary</button>{% endif %}
+    <label>Boundary source, date and agreement reference <textarea id="boundary-note" rows="2" {% if not editable %}readonly{% endif %}>{{ payload.boundary_note }}</textarea></label>
+  </details>
+</div>
+<div class="territory-fee-cards" role="tablist" aria-label="Territory fee assessments">
+
+<section class="form-section-card territory-fee-card" id="commercial-fee-panel" data-assessment-card="commercial"><h2><button type="button" role="tab" id="assessment-tab-commercial" aria-controls="assessment-panel-commercial" aria-selected="true" data-select-assessment="commercial"><span>Martins commercial territory fee</span></button></h2>
+<p class="territory-fee-intro">Our commercial fee for the selected area category, excluding VAT.</p>
+<p id="commercial-fee-amount" class="territory-fee-amount">{{ territory_commercial_fees[payload.inputs.get('commercial_category','standard')]|rand }}</p>
+<ul class="territory-fee-rates"><li>Small area <strong>R 75,000.00</strong></li><li>Standard area <strong>R 150,000.00</strong></li><li>Large area <strong>R 200,000.00</strong></li></ul>
+<label for="input-commercial_category">Commercial area category</label><select id="input-commercial_category" data-input="commercial_category" {% if not editable %}disabled{% endif %}>{% for category,label in [('small','Small area — R 75,000.00'),('standard','Standard area — R 150,000.00'),('large','Large area — R 200,000.00')] %}<option value="{{ category }}" {% if payload.inputs.get('commercial_category','standard')==category %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>
+<p id="commercial-fee-checks"></p>
+
+<p>You choose the commercial category. Population and map size do not automatically classify it.</p></section>
+<section class="form-section-card territory-fee-card running-concern-card" id="running-concern-panel" data-assessment-card="running"><h2><button type="button" role="tab" id="assessment-tab-running" aria-controls="assessment-panel-running" aria-selected="false" data-select-assessment="running"><span>Running concern — recorded business</span></button></h2><p class="territory-fee-intro">Optional existing-holder comparison. These records do not feed a prospective territory forecast.</p>
+<p id="running-concern-fee" class="territory-fee-amount">Unavailable</p><p>Estimated territory fee · excluding VAT</p><p id="running-concern-status">No running-concern comparison loaded.</p><dl hidden id="running-concern-figures" class="territory-running-figures"></dl>
+{% if editable and current_user.has_permission('monthly_figures:view') %}<button class="btn" id="load-running-concern" type="button">Load approved running-concern figures</button>{% endif %}
+<p hidden id="running-concern-assumptions">Actual operating expenses and profit are not available from Monthly Figures; modelled costs will be labelled.</p></section>
+<section class="form-section-card territory-fee-card" id="profit-margin-fee-panel" data-assessment-card="prospective"><h2><button type="button" role="tab" id="assessment-tab-prospective" aria-controls="assessment-panel-prospective" aria-selected="false" data-select-assessment="prospective"><span id="prospective-fee-heading">New prospective franchise — suggested territory fee</span></button></h2>
+<p class="territory-fee-intro">Optional fairness comparison, based on five-year earning potential and affordability.</p>
+<p id="territory-fair-fee" class="territory-fee-amount">Calculate to compare the fairness amount.</p><p>Excluding VAT. Provisional; review the evidence and assumptions before offering it.</p><p id="commercial-fee-comparison"></p><p id="territory-fee-reduction"></p>
+
+<p>Compare what Martins charges with this planning estimate. Applying either amount updates the same forecast; the two fees are never added together.</p></section>
+</div>
+{% include 'franchise/_territory_assessment_print.html' %}
+{% if editable %}<div class="territory-assessment-actions no-print"><button class="btn" type="submit" form="territory-form">Calculate five-year forecast</button> <button class="btn" id="save-territory" type="button">Save planning revision</button></div>{% endif %}
+<div id="territory-assessment-details"><p>Calculating separate assessments for the selected territory…</p></div>
+<details class="territory-edit-controls"><summary>Edit area planning assumptions, scorecard and research</summary><p>These controls edit the area planning model. Running-concern activity remains sourced from approved holder records. Selecting a card above changes the detail view only.</p>
+<form id="territory-form">
+<fieldset {% if not editable %}disabled{% endif %} style="border:0;padding:0">
+<div class="form-section-card"><h2>Financial assumptions</h2>
+<p id="scenario-mode-status" role="status"></p>
+{% if editable %}<button class="btn" id="start-prospective" type="button">Suggest area-only figures for a prospective franchise</button>{% endif %}
+<div id="prospect-controls" {% if payload.get('scenario_mode')!='prospective' %}hidden{% endif %} class="territory-search">
+<label>Prospective area or business <input id="prospect-name" maxlength="180" value="{{ payload.get('prospect',{}).get('name','Prospective territory') }}"></label>
+<label>Planning royalty expense (%) <input id="prospect-royalty" data-format="percentage" data-label="Planning royalty expense" type="text" inputmode="decimal" value="{{ payload.get('prospect',{}).get('royalty_percent',6) }}"></label></div>
+<p>Prospective suggestions use the selected boundary, public area research and labelled planning assumptions. Running-concern figures can be loaded in a separate card without changing the prospective forecast.</p>
+<p>Population, funeral demand and projected income recalculate automatically whenever the selected territory changes.</p>
+<p id="area-estimate-status" role="status">Territory projections use population, mortality and the assumed market share. Recorded franchise figures remain available as a historical comparison.</p>
+<p>Use this franchise holder's approved monthly figures for recorded income and activity. Operating expenses can use the 70% planning assumption or manually entered costs. Compass repayment defaults are 60 monthly instalments at 0% interest; confirm the final agreement terms.</p>
+{% if current_user.has_permission('monthly_figures:view') %}<button class="btn" type="button" id="use-franchise-figures">Use holder figures for an existing-business forecast</button>{% endif %}
+{% if editable %}<button class="btn" type="button" id="apply-commercial-fee" disabled>Use our commercial fee in the forecast</button>{% endif %}
+{% if editable %}<button class="btn" type="button" id="apply-profit-margin-fee" disabled>Use the optional fairness fee in the forecast</button>{% endif %}
+<p id="financial-baseline-status" role="status"></p>
+{% if salary_conversion_note %}<p>{{ salary_conversion_note }}</p>{% endif %}
+<p>The 70% total operating-expense assumption includes direct service costs, staff, overheads and monthly royalties. Royalties are shown separately within that total. Territory repayments, tax and reserves are deducted afterwards. Manual expense mode adds the entered owner salary separately to other fixed costs, direct service costs and contractual royalties. Exclude owner salary from the other fixed-cost amount. In percentage mode, the total expense percentage includes owner salary; it is not added twice.</p>
+</div>
+{% from 'franchise/_territory_groups.html' import groups %}
+{% for title, fields in groups.items() %}
+<section class="form-section-card territory-financial-block"><h2>{{ title }}</h2><div class="form-grid">
+{% for key in fields %}{% set field=territory_field(key) %}<label for="input-{{ key }}"><span class="territory-input-label">{{ field.label }}{% if field.kind=='currency' %} (R){% elif field.kind=='percentage' %} (%){% endif %}</span>
+{% if defaults[key] is sameas true or defaults[key] is sameas false %}
+<input id="input-{{ key }}" data-input="{{ key }}" type="checkbox" {% if payload.inputs.get(key, defaults[key]) %}checked{% endif %}>
+{% elif key == 'start_month' %}<select id="input-{{ key }}" data-input="{{ key }}">{% for month,name in territory_months.items() %}<option value="{{ month }}" {% if payload.inputs.get(key,defaults[key])|int==month %}selected{% endif %}>{{ name }}</option>{% endfor %}</select>
+{% elif key == 'demand_basis' %}<select id="input-{{ key }}" data-input="{{ key }}" disabled><option value="territory" selected>Selected territory (automatic)</option></select>
+{% elif key == 'expense_mode' %}<select id="input-{{ key }}" data-input="{{ key }}"><option value="manual" {% if payload.inputs.get(key,'manual')=='manual' %}selected{% endif %}>Manually entered expenses</option><option value="percentage" {% if payload.inputs.get(key)=='percentage' %}selected{% endif %}>Percentage of revenue</option></select>
+{% elif key == 'fee_method' %}<select id="input-fee_method" data-input="fee_method"><option value="commercial" {% if payload.inputs.get(key)=='commercial' %}selected{% endif %}>Martins commercial fee</option><option value="scorecard" {% if payload.inputs.get(key,'scorecard')=='scorecard' %}selected{% endif %}>Existing commercial scorecard method</option><option value="fair_territory" {% if payload.inputs.get(key) in ['fair_territory','profit_margin'] %}selected{% endif %}>Optional Territory Fee — valuation and affordability</option></select>
+{% elif key == 'payment_mode' %}<select id="input-{{ key }}" data-input="{{ key }}"><option value="instalments" {% if payload.inputs.get(key)=='instalments' %}selected{% endif %}>Instalments</option><option value="upfront" {% if payload.inputs.get(key)=='upfront' %}selected{% endif %}>Upfront</option></select>
+{% else %}<input id="input-{{ key }}" data-input="{{ key }}" data-format="{{ field.kind }}" data-label="{{ field.label }}" type="text" inputmode="{{ 'numeric' if field.kind=='integer' else 'decimal' }}" step="{{ field.step }}" min="{{ field.minimum }}" max="{{ field.maximum }}" value="{{ '%.2f'|format(payload.inputs.get(key, defaults[key])|float) if field.kind=='currency' else payload.inputs.get(key, defaults[key]) }}" {% if payload.geometry and key in ['population','mortality_per_1000','household_size'] %}readonly aria-describedby="area-estimate-status"{% endif %} required>{% endif %}
+</label>{% endfor %}</div>
+{% if title=='Demand and service mix' %}<details><summary>How demand and service income are calculated</summary><p>Annual resident deaths = selected population × annual mortality rate ÷ 1,000. Monthly franchise services = annual deaths ÷ 12 × market share ÷ 100. Funeral income uses the burial/cremation mix and entered cash package prices, with the selected ramp-up and annual growth assumptions.</p></details>{% elif title=='Operating costs and income' %}<details><summary>How operating income and expenses are calculated</summary><p>Net policy administration income = premiums collected − insurer payover. Business income adds funeral services, other sales and any additional policy commission. Manual operating costs add direct costs, other fixed costs, owner salary and contractual royalties. Percentage mode uses the total expense percentage, including royalties and owner salary. Territory repayments, tax and reserves are deducted afterwards.</p></details>{% endif %}
+</section>{% endfor %}
+<div class="form-section-card">
+<label class="territory-checkbox"><input id="input-confirmed" data-input="confirmed" type="checkbox" {% if payload.inputs.get('confirmed') %}checked{% endif %}> I have checked the financial assumptions, fee terms, owner salary and operating costs.</label>
+<p class="muted">Interest defaults to the Compass model's zero-interest instalments. VAT recovery is modelled as an economic cost adjustment; timing of VAT refunds requires separate confirmation.</p>
+</div>
+<section class="form-section-card" id="prospective-assumptions" hidden><h2>Suggested figures and their basis</h2><p id="prospect-assumptions-note"></p><div id="prospect-assumptions-list"></div></section>
+<section class="form-section-card" id="profit-margin-fee-details">
+<h2>Optional Territory Fee — calculation details</h2>
+<p><strong>Fee = the lower of the five-year profit-margin valuation and the affordable fee ceiling.</strong> Population, expected resident deaths, achievable market share, service mix and costs drive the forecast. A geographically larger territory carries no automatic premium.</p>
+<p>For each year, multiply projected operating profit by that year's profit margin, then add the five contributions. R1,000,000 turnover and R200,000 profit gives a 20% margin and a R40,000 contribution. A loss or non-positive turnover contributes R0.</p>
+<p>Profit includes operating costs and monthly royalties, before tax, reserves, financing and territory repayments. Turnover is forecast business income, excluding insurer payover. Existing volume, price and cost growth assumptions apply.</p>
+<p id="profit-margin-fee-status">Calculate the forecast to compare this optional fee.</p>
+<div class="territory-table-wrap"><table class="territory-projection"><thead><tr><th>Measure</th>{% for year in range(1,6) %}<th>Year {{ year }}</th>{% endfor %}</tr></thead><tbody id="profit-margin-fee-years"></tbody></table></div>
+<p id="profit-margin-fee-total"></p>
+<p id="territory-affordable-ceiling"></p>
+<p id="territory-fee-checks"></p>
+<p>The affordable ceiling tests monthly liquidity, owner salary coverage, five-year investment recovery, the entered target margin and a 20% lower-sales scenario with the entered safety buffer. It includes entered tax, reserves, finance charges and repayment terms; zero or omitted costs remain assumptions requiring review. The ceiling is rounded down to a whole Rand.</p>
+
+<p>This is an owner-requested planning calculation, not a verified FASA-prescribed formula. <a href="https://www.fasa.co.za/assessments/DDSelf-AssessmentChecklist.pdf" target="_blank" rel="noopener">FASA disclosure checklist</a> (checked 21 October 2026) covers fee, financial projection and valuation disclosures. The formula is a planning assumption. Total excludes VAT and is not discounted to present value; affordability and evidence checks remain separate.</p>
+</section>
+<div class="form-section-card territory-scorecard"><h2>Commercial potential scorecard</h2><p>Supported suggested scores and evidence are inserted automatically. You can review and edit each factor.</p>
+<p>All seven factors include evidence notes. Suggested scores are provisional. Where evidence is insufficient, a neutral 3/5 planning assumption is clearly labelled and explains the missing information.</p>
+{% if editable %}<button class="btn" id="get-score-recommendations" type="button">Update scorecard recommendations</button>{% endif %}
+<p id="score-recommendations-status" role="status">Recommendations update when you calculate the forecast or request an update.</p>
+{% for key, weight in weights.items() %}<article class="territory-score-factor"><h3>{{ factor_labels[key] }} ({{ weight }}%)</h3><div class="form-grid">
+<label>Score / 5 <select data-score="{{ key }}"><option value="">Evidence required</option>{% for score in range(6) %}<option value="{{ score }}" {% if payload.scores.get(key)==score %}selected{% endif %}>{{ score }} / 5</option>{% endfor %}{% if key in payload.scores and payload.scores[key] not in range(6) %}<option selected value="{{ payload.scores[key] }}">{{ payload.scores[key] }} / 5</option>{% endif %}</select></label>
+<label>Evidence <textarea data-score-evidence="{{ key }}" rows="5">{{ payload.score_evidence.get(key,'') }}</textarea></label></div>
+<div data-score-recommendation="{{ key }}"><p>Recommendation: {{ factor_guidance[key][0] }}</p><details><summary>Scoring guidance</summary><p>{{ factor_guidance[key][1] }}</p><p>Use intermediate scores 2 and 4 where the evidence falls between the described levels. Missing information is not a zero score.</p></details></div></article>{% endfor %}
+</div>
+<div class="form-section-card"><h2>Research evidence</h2>
+<p>Research the selected territory using the existing Compass sources and public research workflow. Each finding keeps its source, date, method and confidence. Missing data remains unknown.</p>
+<div class="form-grid"><label>Town / report title <input id="research-title" maxlength="120" placeholder="Westonaria / Randfontein"></label>
+<label>Province <select id="research-province">{% for province in ['Western Cape','Eastern Cape','Northern Cape','Free State','KwaZulu-Natal','North West','Gauteng','Mpumalanga','Limpopo'] %}<option {% if province == franchise.province %}selected{% endif %}>{{ province }}</option>{% endfor %}</select></label>
+<label>Municipality code <input id="research-municipality" maxlength="6" value="{{ franchise.municipality_code or '' }}" placeholder="e.g. GT485; leave unknown if unverified"></label></div>
+<button class="btn" type="button" id="research-territory">Research selected territory</button>
+<p id="research-status" role="status" aria-live="polite">No new research requested.</p>
+<button class="btn" type="button" id="apply-research" hidden>Use researched population, household size and mortality proxy</button>
+<p class="muted">Applying estimates clears financial confirmation. Review the population model and mortality basis before using them.</p>
+<div id="research-records"></div><div id="research-businesses"></div><div id="research-prices"></div>
+<p><a href="https://www.statssa.gov.za/?p=18967" target="_blank" rel="noopener">Stats SA ward population estimates</a> · <a href="https://www.sars.gov.za/about/sars-tax-and-customs-system/tax-statistics/" target="_blank" rel="noopener">SARS aggregate tax statistics</a></p>
+<details><summary>Add reviewed source evidence</summary><div class="form-grid">
+<label>Factor <select id="evidence-factor">{% for key in weights %}<option>{{ key }}</option>{% endfor %}</select></label>
+<label>Value / finding <input id="evidence-value"></label><label>Source URL <input type="url" id="evidence-url" placeholder="https://..."></label>
+<label>Data / publication date <input type="date" id="evidence-date"></label><label>Method / scope <input id="evidence-method"></label>
+<label>Confidence <select id="evidence-confidence"><option>unverified</option><option>low</option><option>medium</option><option>high</option></select></label></div>
+<button class="btn" id="add-source" type="button">Record reviewed source</button></details>
+<textarea id="sources" hidden></textarea>
+<div id="source-list"></div>
+</div>
+</fieldset>
+
+</form>
+</details>
+<p id="territory-status" role="status" aria-live="polite"></p>
+<div id="territory-results" hidden class="form-section-card territory-legacy-forecast"><h2>Five-year forecast</h2><p id="recommendation"></p><p id="calculation-errors"></p><div class="territory-table-wrap"><table class="table territory-projection"><thead><tr><th scope="col">Measure</th>{% for year in range(1,6) %}<th scope="col">Year {{ year }}</th>{% endfor %}</tr></thead><tbody id="forecast-years"></tbody></table></div><p id="forecast-summary"></p><p id="downside-summary"></p></div>
+<div class="form-section-card territory-history"><h2>Saved revisions</h2><p>Saved forecasts preserve the inputs and rules used at calculation time.</p>
+{% for snapshot in history %}<p>Revision {{ snapshot.version }} · {{ territory_date(snapshot.created_at) }}{% if current_user.has_permission('franchise_details:export') %} · <a href="{{ url_for('franchise.territory_export', franchise_id=franchise.id, version=snapshot.version) }}">Download calculation and evidence</a> · <a href="{{ url_for('franchise.territory_report', franchise_id=franchise.id, version=snapshot.version) }}">Open source-backed report / print</a>{% endif %}</p>{% else %}<p>No planning revisions saved yet.</p>{% endfor %}</div>
+<script id="territory-context" type="application/json">{{ {'payload':payload,'savedResult':saved_result,'version':version,'csrf':csrf,'holderName':franchise.business_name,'prospectUrl':url_for('franchise.territory_prospect_suggestions',franchise_id=franchise.id),'commercialFees':territory_commercial_fees,'hasMaps':maps_key|length > 0,'editable':editable,'calculateUrl':url_for('franchise.territory_calculate',franchise_id=franchise.id),'saveUrl':url_for('franchise.territory_save',franchise_id=franchise.id),'boundaryUrl':url_for('franchise.territory_boundaries',franchise_id=franchise.id),'composeUrl':url_for('franchise.territory_compose',franchise_id=franchise.id),'researchUrl':url_for('franchise.territory_start_research',franchise_id=franchise.id),'actualsUrl':url_for('franchise.territory_franchise_figures',franchise_id=franchise.id),'scoreRecommendationsUrl':url_for('franchise.territory_score_recommendations',franchise_id=franchise.id)}|tojson }}</script>
+<link rel="stylesheet" href="{{ asset_url('vendor/leaflet/leaflet.css') }}">
+<script src="{{ asset_url('vendor/leaflet/leaflet.js') }}"></script>
+<script src="{{ asset_url('js/territory-assessments.js') }}"></script>
+<script src="{{ asset_url('js/territory.js') }}"></script>
+{% if maps_key %}<script async onerror="territoryMapsLoadFailed()" src="https://maps.googleapis.com/maps/api/js?key={{ maps_key|urlencode }}&amp;callback=initTerritoryMap&amp;loading=async"></script>{% endif %}
+</div>
+{% endblock %}

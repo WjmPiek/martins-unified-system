@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block app_content %}
+<div class="section-header"><div><h1>Territory &amp; Valuation</h1><p class="muted">Choose a franchise to review its territory, research and financial projections.</p></div></div>
+<div class="card"><table class="table"><thead><tr><th>Franchise</th><th>Territory planning</th></tr></thead><tbody>
+{% for franchise in franchises %}<tr><td>{{ franchise.business_name }}</td><td><a class="btn" href="{{ url_for('franchise.territory', franchise_id=franchise.id) }}">Open territory</a> <a class="btn secondary" href="{{ url_for('franchise.territory', franchise_id=franchise.id, scenario='prospective') }}">New prospective assessment</a></td></tr>
+{% else %}<tr><td colspan="2">No accessible franchises.</td></tr>{% endfor %}
+</tbody></table></div>
+{% endblock %}

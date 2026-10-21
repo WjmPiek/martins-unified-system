@@ -324,7 +324,7 @@ def run_next_job(queue_name: str = "default", worker_id: str = "worker") -> Opti
     return run_job(job, worker_id=worker_id)
 
 
-def release_stale_jobs(stale_after_minutes: int = 15, *, worker_id: str = "system") -> int:
+def release_stale_jobs(stale_after_minutes: int = 15, *, worker_id: str = "system", queue_name: Optional[str] = None) -> int:
     """Release running jobs whose heartbeat is stale.
 
     Render can restart a web or worker container while a job is locked.  Because
@@ -336,6 +336,8 @@ def release_stale_jobs(stale_after_minutes: int = 15, *, worker_id: str = "syste
                   .filter(ImportJob.status.in_(["running", "processing", "validating", "publishing"]))
                   .filter((ImportJob.heartbeat_at.is_(None)) | (ImportJob.heartbeat_at < cutoff))
                   .all())
+    if queue_name is not None:
+        stale_jobs = [job for job in stale_jobs if job.queue_name == queue_name]
     for job in stale_jobs:
         job.status = "queued"
         job.message = f"Released stale lock by {worker_id}."[:255]

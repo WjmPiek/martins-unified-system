@@ -80,6 +80,8 @@ def create_app(config_class=Config):
     from app.dashboard.routes import dashboard_bp
     from app.admin.routes import admin_bp
     from app.franchise.routes import franchise_bp
+    from app.franchise import territory_routes  # noqa: F401 - native franchise routes
+    from app.franchise import territory_research  # noqa: F401 - existing worker registry
     from app.monthly.routes import monthly_bp
     from app.royalties.routes import royalties_bp
     from app.heatmap.routes import heatmap_bp
@@ -140,6 +142,12 @@ def create_app(config_class=Config):
         if metric_format == "number" or metric_key in count_metrics:
             return format_count_value(value)
         return format_rand(value)
+
+    @app.context_processor
+    def inject_territory_access():
+        from flask_login import current_user
+        from app.franchise.territory_access import can_view_territories
+        return {"territory_owner_access": app.config.get("TERRITORY_VALUATION_ENABLED", False) and can_view_territories(current_user)}
 
     @app.context_processor
     def inject_static_branding():
@@ -206,7 +214,7 @@ def create_app(config_class=Config):
             while True:
                 register_worker_heartbeat(worker_id, queue_name=queue_name, status="polling", message="Polling for queued jobs", commit=True)
                 if release_stale:
-                    released = release_stale_jobs(stale_after_minutes=stale_minutes, worker_id=worker_id)
+                    released = release_stale_jobs(stale_after_minutes=stale_minutes, worker_id=worker_id, queue_name=queue_name)
                     if released:
                         print(f"Released stale jobs: {released}")
 

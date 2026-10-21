@@ -1,0 +1,9 @@
+{% for key,assessment in assessments.items() %}
+<div class="territory-assessment-panel" data-assessment-panel="{{ key }}" data-available="{{ 'true' if assessment.available else 'false' }}" id="assessment-panel-{{ key }}" role="tabpanel" aria-labelledby="assessment-tab-{{ key }}" {% if key!='commercial' %}hidden{% endif %}>
+{% if assessment.available %}
+{% with payload=assessment.payload,result=assessment.result %}
+{% include 'franchise/_territory_assessment_details.html' %}
+{% endwith %}
+{% else %}<section class="form-section-card"><h2>{{ assessment.label }} — calculation unavailable</h2><p>{{ assessment.reason }}</p></section>{% endif %}
+</div>
+{% else %}<p>Save a new planning revision to preserve the separate calculations for all three cards. Older saved revisions retain their original figures.</p>{% endfor %}

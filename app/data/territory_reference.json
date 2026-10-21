@@ -1,0 +1,20 @@
+{
+  "worldpop": "https://doi.org/10.5258/SOTON/WP00839",
+  "reference_checked_on": "2026-10-20",
+  "census_source": "https://www.statssa.gov.za/publications/Census2022inBrief/Census2022inBriefJune2024.pdf",
+  "census_tables": "Table 3.1 and Figure 4.1; official census facts, historical provincial context only",
+  "mortality_provenance": "Imported from existing Franchise Compass SA engine.js; independently revalidated only when live source parser succeeds",
+  "census2022": {
+    "Western Cape": {"population_2011": 5822734, "population_2022": 7433020, "household_size": 3.3},
+    "Eastern Cape": {"population_2011": 6562053, "population_2022": 7230204, "household_size": 3.9},
+    "Northern Cape": {"population_2011": 1145861, "population_2022": 1355945, "household_size": 4.1},
+    "Free State": {"population_2011": 2745590, "population_2022": 2964412, "household_size": 3.5},
+    "KwaZulu-Natal": {"population_2011": 10267300, "population_2022": 12423907, "household_size": 4.4},
+    "North West": {"population_2011": 3509953, "population_2022": 3804547, "household_size": 3.3},
+    "Gauteng": {"population_2011": 12272263, "population_2022": 15099423, "household_size": 2.8},
+    "Mpumalanga": {"population_2011": 4039939, "population_2022": 5143324, "household_size": 3.6},
+    "Limpopo": {"population_2011": 5404868, "population_2022": 6572721, "household_size": 3.6}
+  },
+  "population2024": {"Western Cape": 7562588, "Eastern Cape": 7176230, "Northern Cape": 1372943, "Free State": 3044050, "KwaZulu-Natal": 12312712, "North West": 4155303, "Gauteng": 15931824, "Mpumalanga": 5057662, "Limpopo": 6402594},
+  "deaths2024": {"Western Cape": 56011, "Eastern Cape": 77180, "Northern Cape": 14407, "Free State": 28228, "KwaZulu-Natal": 88827, "North West": 31811, "Gauteng": 96252, "Mpumalanga": 31197, "Limpopo": 45565}
+}

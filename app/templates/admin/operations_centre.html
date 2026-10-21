@@ -70,7 +70,7 @@
 <div class="diagnostic-grid">
     <section class="page-card">
         <h2>Import status</h2>
-        <p class="page-subtitle">Live view of import job states. Anything failed or needs review must be checked before trusting financial outputs.</p>
+        <p class="page-subtitle">Live view of import job states. Check failed imports and items requiring review before relying on financial results.</p>
         <div class="diagnostic-cards small-cards">
             {% for status, count in import_status.items() %}
                 <div class="diagnostic-card {% if status in ['failed','needs_review','warning'] %}danger{% elif status in ['running','queued','processing','validating','publishing'] %}warning{% else %}ok{% endif %}">

@@ -1,0 +1,35 @@
+The territory_population directory was copied from the user's existing
+Franchise Compass SA public/population dataset on 20 October 2026.
+
+WorldPop, University of Southampton — WorldPop R2025A v1, projected 2026.
+CC BY 4.0: https://creativecommons.org/licenses/by/4.0/
+Source: https://doi.org/10.5258/SOTON/WP00839
+Catalog: https://api.stac.worldpop.org/collections/ZAF/items/zaf_pop_2026_CN_100m_R2025A_v1
+
+Compass aggregation: 100 m constrained people-count grid aggregated to a
+500 m grid; application polygon intersections use 4 by 4 cell samples.
+Coverage: South African mainland; see manifest for excluded offshore areas.
+These are modelled estimates, not recorded custom-territory census counts.
+
+territory_reference.json contains numerical facts from Stats SA Census 2022
+in Brief, Table 3.1 and Figure 4.1. They are historical provincial context,
+not current household measurements for arbitrary polygons.
+
+The 2024 mortality/provincial denominator reference was imported from the
+existing Compass model. Until live verification succeeds it is explicitly
+marked cached_unverified with low confidence, not a newly verified retrieval.
+
+The source adapters retain publisher links and dates. OSM geography and roads
+must retain OpenStreetMap contributor attribution. Census 2011 boundaries are
+credited to Stats SA / UCT Libraries and retain their vintage.
+
+Official municipality and ward boundaries are attributed to the Municipal
+Demarcation Board (MDB). Publisher metadata and release links are retained
+with each selected part. MDB permits research, publications and value-added
+applications with attribution; do not resell or pass modified geography off
+as an original MDB product. Combined franchise outlines are derived planning
+areas and require separate confirmation against the franchise agreement.
+Source: https://dataportal-mdb-sa.opendata.arcgis.com/
+The published 2026 release takes effect on 4 November 2026 according to MDB
+item 82c7a6d178454ddcb4dc1ef6bf2a4303; publication modification dates are
+not treated as the effective dates of the boundary.

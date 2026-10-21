@@ -282,6 +282,43 @@ class Franchise(db.Model):
     def franchisee_full_name(self):
         return f"{self.franchisee_name} {self.franchisee_surname}".strip()
 
+class FranchiseTerritory(db.Model):
+    """One current planning study per existing franchise; history is append-only."""
+    __tablename__ = "franchise_territories"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=False, unique=True)
+    version = db.Column(db.Integer, nullable=False, default=1)
+    payload_json = db.Column(db.Text, nullable=False)
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+
+
+class TerritoryResearchRun(db.Model):
+    __tablename__ = "territory_research_runs"
+    id = db.Column(db.Integer, primary_key=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey("franchises.id"), nullable=False, index=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    input_hash = db.Column(db.String(64), nullable=False)
+    request_json = db.Column(db.Text, nullable=False)
+    result_json = db.Column(db.Text)
+    job_id = db.Column(db.Integer, db.ForeignKey("import_jobs.id"))
+    status = db.Column(db.String(30), nullable=False, default="queued")
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    finished_at = db.Column(db.DateTime)
+
+
+class TerritoryValuationSnapshot(db.Model):
+    __tablename__ = "territory_valuation_snapshots"
+    id = db.Column(db.Integer, primary_key=True)
+    territory_id = db.Column(db.Integer, db.ForeignKey("franchise_territories.id"), nullable=False, index=True)
+    version = db.Column(db.Integer, nullable=False)
+    payload_json = db.Column(db.Text, nullable=False)
+    result_json = db.Column(db.Text, nullable=False)
+    created_by_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    __table_args__ = (db.UniqueConstraint("territory_id", "version", name="uq_territory_snapshot_version"),)
+
+
 class AuditLog(db.Model):
     __tablename__ = "audit_logs"
     id = db.Column(db.Integer, primary_key=True)

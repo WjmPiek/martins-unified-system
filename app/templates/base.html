@@ -55,6 +55,12 @@
                         <span class="ms-brand-copy"><strong class="ms-brand-title">Martin's Funerals</strong><small class="ms-brand-module">{{ 'Heatmap' if request.path.startswith('/heat-map') else ('Attendance Register' if request.path.startswith('/attendance') else ('Claims' if request.path.startswith('/insurance-claims') else 'Business Overview')) }}</small></span>
                     </a>
 
+                    {% if territory_owner_access %}
+                    <div class="nav-primary-link">
+                        <a href="{{ url_for('franchise.territory_index') }}"><span class="nav-icon">T</span><span><strong>Territory &amp; Valuation</strong><small>Franchise territory planning</small></span></a>
+                    </div>
+                    {% endif %}
+
                     {# Franchise users share the main UI but only see their scoped core and activated modules. #}
                     {% if pure_franchise_portal %}
                         <div class="franchise-context-card"><small>Your franchise</small><strong>{{ selected_franchise.business_name if selected_franchise else 'My Business' }}</strong></div>
@@ -306,7 +312,7 @@
                         {% if privileged_user and franchise_view_mode %}
                             <a class="logout-link secondary-link" href="{{ url_for('dashboard.main_dashboard') }}">Main Dashboard</a>
                         {% endif %}
-                        <a class="logout-link" href="{{ url_for('auth.logout') }}">Logout</a>
+                        <a class="logout-link" href="{{ url_for('auth.logout') }}">Log out</a>
                     </div>
                 </header>
 

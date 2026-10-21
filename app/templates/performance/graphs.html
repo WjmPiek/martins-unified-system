@@ -110,7 +110,7 @@
         }
         var prefix = moneyMetrics.indexOf(g.metric_key) >= 0 ? 'R ' : '';
         title.textContent = g.metric_label + ' - ' + (data.selected_label || 'Selected franchise');
-        subtitle.textContent = 'Selected period ending ' + (data.selected_period_label || '') + '. Target line uses the Admin-controlled South Africa GDP growth standard.';
+        subtitle.textContent = 'Selected period ending ' + (data.selected_period_label || '') + '. Target line uses the Admin-controlled South African GDP growth standard.';
         grid.innerHTML = card('Actual vs Target','Shows whether performance is above or below the fair target line.',g.actual_vs_target,[{key:'actual',label:'Actual'},{key:'target',label:'Target'}],prefix,'','line')
           + card('Compare to Last Year','Compares this year against the same month last year.',g.previous_year,[{key:'actual',label:'This year'},{key:'previous_year',label:'Last year'}],prefix,'','line')
           + card('Forecast vs Target','Current forecast compared to the target line.',g.forecast,[{key:'forecast',label:'Forecast'},{key:'target',label:'Target'}],prefix,'','line')
