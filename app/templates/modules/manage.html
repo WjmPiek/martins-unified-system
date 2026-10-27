@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% block app_content %}
+<section class="page-section"><div class="section-header"><div><h1>Module Activations</h1><p>Confirm payment before issuing a code. Each code activates one module for one franchise holder until Head Office deactivates it.</p></div></div>
+{% if generated %}<div class="form-section-card"><h2>Activation Code Created</h2><p>{{ generated.module }} · {{ generated.email }}</p><p><strong style="font-size:1.2rem;overflow-wrap:anywhere;">{{ generated.value }}</strong></p><p>Copy this code and provide it to the holder. It is shown only now; the saved record contains its secure fingerprint.</p></div>{% endif %}
+<div class="form-section-card"><h2>Issue Activation Code</h2><form method="post">
+<input type="hidden" name="csrf_token" value="{{ registration_csrf }}"><input type="hidden" name="action" value="issue">
+<label for="license-user">Franchise Holder</label><select id="license-user" name="user_id" required><option value="">Select holder</option>{% for owner in owners %}<option value="{{ owner.id }}">{{ owner.full_name }} · {{ owner.email }}</option>{% endfor %}</select>
+<label for="license-module">Module</label><select id="license-module" name="module_code">{% for code,label in modules.items() %}<option value="{{ code }}">{{ label }}</option>{% endfor %}</select>
+<label for="payment-reference">Payment Reference</label><input id="payment-reference" name="payment_reference" maxlength="160">
+<label><input type="checkbox" name="payment_confirmed" value="yes" style="width:18px;height:18px;" required> Payment has been confirmed by Head Office.</label><button class="button-auto">Generate Activation Code</button></form></div>
+{% for owner in owners %}<div class="form-section-card"><h2>{{ owner.full_name }}</h2><p>{{ owner.email }} · Manuals: permanently available</p>
+<div class="table-responsive"><table class="system-report-table"><thead><tr><th>Module</th><th>Status</th><th>Action</th></tr></thead><tbody>{% for code,label in modules.items() %}{% set access=owner.module_access|selectattr('module_code','equalto',code)|first %}<tr><td>{{ label }}</td><td>{% if module_active(owner,code) %}{% if access.paid_activated_at %}Paid — until deactivated{% else %}Trial until {{ utc(access.trial_expires_at).strftime('%d %b %Y %H:%M') }} UTC{% endif %}{% else %}Inactive{% endif %}</td><td><form method="post"><input type="hidden" name="csrf_token" value="{{ registration_csrf }}"><input type="hidden" name="user_id" value="{{ owner.id }}"><input type="hidden" name="module_code" value="{{ code }}"><button class="btn danger button-auto" name="action" value="deactivate">Deactivate</button></form></td></tr>{% endfor %}</tbody></table></div></div>{% endfor %}
+</section>
+{% endblock %}

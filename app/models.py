@@ -72,6 +72,7 @@ class User(UserMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     is_active_account = db.Column(db.Boolean, nullable=False, default=True)
+    module_trial_started_at = db.Column(db.DateTime)
     last_login_at = db.Column(db.DateTime)
     deactivated_at = db.Column(db.DateTime)
     deactivation_reason = db.Column(db.String(255), default="")
@@ -176,9 +177,13 @@ class User(UserMixin, db.Model):
             return True
         # Optional modules are off until Admin explicitly activates them for
         # this individual Franchise User; do not inherit them from the role.
-        if code in OPTIONAL_FRANCHISE_MODULES and self.has_role("Franchise User"):
-            override = next((item for item in self.module_access if item.module_code == code), None)
-            return bool(override and override.is_enabled)
+        module_view = code.split(":")[0] + ":view"
+        if module_view in OPTIONAL_FRANCHISE_MODULES and self.is_franchise_scoped_user():
+            from app.module_licensing import module_active
+            if not module_active(self, module_view):
+                return False
+            if code == module_view and self.has_role("Franchise User"):
+                return True
         return any(role.has_permission(code) for role in self.roles)
 
     def get_reset_token(self):
@@ -214,6 +219,7 @@ class FranchiseRegistration(db.Model):
     reviewed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
     review_note = db.Column(db.Text, nullable=False, default='')
+    admin_alert_sent_at = db.Column(db.DateTime)
 
 
 class UserModuleAccess(db.Model):
@@ -225,6 +231,8 @@ class UserModuleAccess(db.Model):
     is_enabled = db.Column(db.Boolean, nullable=False, default=False)
     updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
+    trial_expires_at = db.Column(db.DateTime)
+    paid_activated_at = db.Column(db.DateTime)
     user = db.relationship("User", back_populates="module_access")
     __table_args__ = (db.UniqueConstraint("user_id", "module_code", name="uq_user_module_access_user_code"),)
 
@@ -233,6 +241,8 @@ def ensure_mandatory_franchise_modules(user):
     """Persist compulsory module access for a Franchise User account."""
     if not user or not user.has_role("Franchise User"):
         return 0
+    from app.module_licensing import start_trial
+    start_trial(user)
     changed = 0
     for code in MANDATORY_FRANCHISE_MODULES:
         access = next((item for item in user.module_access if item.module_code == code), None)
@@ -243,6 +253,19 @@ def ensure_mandatory_franchise_modules(user):
             access.is_enabled = True
             changed += 1
     return changed
+
+
+class ModuleActivationCode(db.Model):
+    __tablename__ = 'module_activation_codes'
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    module_code = db.Column(db.String(80), nullable=False)
+    code_hash = db.Column(db.String(64), nullable=False, unique=True)
+    issued_by_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    issued_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    redeemed_at = db.Column(db.DateTime)
+    revoked_at = db.Column(db.DateTime)
+    payment_reference = db.Column(db.String(160), nullable=False, default='')
 
 
 class Franchise(db.Model):

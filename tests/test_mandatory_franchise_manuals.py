@@ -10,7 +10,7 @@ class TestConfig:
     TESTING = True
 
 
-def test_manuals_cannot_be_disabled_and_other_optional_modules_need_admin_activation():
+def test_manuals_cannot_be_disabled_and_optional_trial_is_started_once():
     app = create_app(TestConfig)
     with app.app_context():
         db.create_all()
@@ -44,11 +44,11 @@ def test_manuals_cannot_be_disabled_and_other_optional_modules_need_admin_activa
             user_id=owner.id, module_code="manuals:view"
         ).one().is_enabled is True
 
-        db.session.add(UserModuleAccess(
-            user_id=owner.id,
-            module_code="heat_map:view",
-            is_enabled=True,
-        ))
+        access = UserModuleAccess.query.filter_by(user_id=owner.id,module_code='heat_map:view').one()
+        assert access.trial_expires_at is not None
+        trial_start = owner.module_trial_started_at
+        ensure_mandatory_franchise_modules(owner)
+        assert owner.module_trial_started_at == trial_start
         db.session.commit()
         assert owner.has_permission("heat_map:view") is True
 

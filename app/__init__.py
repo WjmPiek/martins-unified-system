@@ -121,6 +121,8 @@ def create_app(config_class=Config):
 
     from app.registration import registration_bp
     app.register_blueprint(registration_bp)
+    from app.module_licensing import licensing_bp
+    app.register_blueprint(licensing_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(admin_bp)

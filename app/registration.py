@@ -47,10 +47,10 @@ def check_csrf():
         abort(400, 'This form expired. Refresh the page and try again.')
 
 
-def notify(application, subject, body):
+def notify(application, subject, body, recipient=None):
     try:
         with RegistrationMailConnection(current_app.extensions['mail']) as connection:
-            connection.send(Message(subject=subject, recipients=[application.email], body=body))
+            connection.send(Message(subject=subject, recipients=[recipient or application.email], body=body))
         return True
     except Exception:
         current_app.logger.warning('Registration email delivery failed for application %s', application.id)
@@ -88,6 +88,9 @@ def submit_registration():
                 application = FranchiseRegistration(**fields, password_hash=generate_password_hash(password))
                 db.session.add(application)
                 try:
+                    db.session.flush()
+                    from app.registration_alerts import queue_alert
+                    queue_alert(application)
                     db.session.commit()
                 except IntegrityError:
                     db.session.rollback()
@@ -205,4 +208,22 @@ def review(application_id):
         body = 'Head Office has reviewed your application and has not approved access. Please contact Head Office for assistance.'
     sent = notify(application, "Martin's Funerals registration update", body)
     flash(f'Application {application.status}. ' + ('Applicant notified by email.' if sent else 'Email could not be sent. Please contact the applicant directly.'), 'success' if sent else 'warning')
+    return redirect(url_for('registration.applications'))
+
+
+@registration_bp.post('/admin/registrations/<int:application_id>/email-alert')
+@login_required
+def retry_head_office_alert(application_id):
+    require_reviewer()
+    check_csrf()
+    application = FranchiseRegistration.query.filter_by(id=application_id).with_for_update().first_or_404()
+    if not application.admin_alert_sent_at:
+        from app.registration_alerts import queue_alert
+        from app.models import ImportJob
+        import json
+        pending = ImportJob.query.filter_by(kind='registration_head_office_alert').filter(ImportJob.status.in_(['queued','running','processing'])).all()
+        if not any(json.loads(job.payload_json or '{}').get('application_id') == application.id for job in pending):
+            queue_alert(application)
+            db.session.commit()
+    flash('Head Office email alert queued, already waiting, or previously delivered. Check Operations Centre for delivery errors.', 'info')
     return redirect(url_for('registration.applications'))

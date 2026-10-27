@@ -29,7 +29,7 @@
           <td class="action-buttons">
             <button type="button" class="btn secondary button-auto" onclick="openUserModal('view-user-{{ user.id }}')">View</button>
             <button type="button" class="btn secondary button-auto" onclick="openUserModal('edit-user-{{ user.id }}')">Edit</button>
-            <button type="button" class="btn button-auto" onclick="openUserModal('modules-user-{{ user.id }}')">Modules</button>
+            <a class="btn button-auto" href="{{ url_for('licensing.manage') }}">Modules / Codes</a>
             <form method="post" action="{{ url_for('admin.delete_user', user_id=user.id) }}" style="display:inline" onsubmit="return confirm('Delete/deactivate this franchise user?');"><button class="btn danger button-auto" type="submit">Delete</button></form>
           </td>
         </tr>

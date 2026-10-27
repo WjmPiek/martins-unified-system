@@ -129,3 +129,6 @@ def run_rebuild_performance_cache_job(job: ImportJob) -> dict:
         update_job_progress(job, int((index / total_periods) * 100), f"Rebuilt performance cache for {year}-{month:02d}", commit=True)
     add_job_log(job, "info", "Performance cache rebuild complete", {"rows": total_rows}, commit=False)
     return {"periods": len(periods), "rows": total_rows}
+
+
+from app import registration_alerts  # Register durable Head Office email alerts.

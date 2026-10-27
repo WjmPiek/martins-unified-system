@@ -633,25 +633,10 @@ def franchise_users():
 @login_required
 @permission_required("users:edit")
 def update_franchise_user_modules(user_id):
-    user = User.query.get_or_404(user_id)
-    if not user.is_franchise_scoped_user() or user.parent_franchise_user_id:
-        abort(400)
-
-    enabled_codes = set(request.form.getlist("module_codes"))
-    valid_codes = {code for code, _label, _description in FRANCHISE_OPTIONAL_MODULES}
-    for code in valid_codes:
-        access = UserModuleAccess.query.filter_by(user_id=user.id, module_code=code).first()
-        if access is None:
-            access = UserModuleAccess(user_id=user.id, module_code=code)
-            db.session.add(access)
-        access.is_enabled = code in enabled_codes
-
-    ensure_mandatory_franchise_modules(user)
-    db.session.commit()
-    enabled_labels = [label for code, label, _description in FRANCHISE_OPTIONAL_MODULES if code in enabled_codes]
-    log_action("Users", "Updated franchise user modules", f"User: {user.email}; Modules: {', '.join(enabled_labels) or 'None'}")
-    flash(f"Activated modules updated for {user.full_name}.", "success")
-    return redirect(url_for("admin.franchise_users"))
+    if not current_user.is_admin_user():
+        abort(403)
+    flash("Use Module Activations to issue a paid code or deactivate a module.", "info")
+    return redirect(url_for("licensing.manage"))
 
 
 @admin_bp.route("/users/create", methods=["GET", "POST"])

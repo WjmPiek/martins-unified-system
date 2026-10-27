@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% block app_content %}
+<section class="page-section"><div class="section-header"><div><h1>My Modules</h1><p>Optional modules include a 30-day trial. Paid activation remains active until Head Office deactivates it.</p></div></div>
+<div class="form-section-card"><h2>Activate a Paid Module</h2><p>After payment is confirmed, Head Office provides a separate code for each module. Codes are linked to your account and can be used once.</p><form method="post"><input type="hidden" name="csrf_token" value="{{ registration_csrf }}"><label for="activation-code">Activation Code</label><input id="activation-code" name="activation_code" maxlength="200" autocomplete="off" required><button class="button-auto">Activate Module</button></form></div>
+<div class="form-section-card"><h2>Manuals</h2><p>Permanently available. No activation code required.</p></div>
+{% for code,label in modules.items() %}{% set access=owner.module_access|selectattr('module_code','equalto',code)|first %}
+<div class="form-section-card"><h2>{{ label }}</h2>
+{% if module_active(owner,code) %}{% if access.paid_activated_at %}<p>Paid activation — active until Head Office deactivates it.</p>{% else %}<p>Trial active until {{ utc(access.trial_expires_at).strftime('%d %b %Y %H:%M') }} UTC.</p>{% endif %}
+{% else %}<p>Inactive — contact Head Office to purchase this module and obtain an activation code.</p>{% endif %}</div>
+{% endfor %}</section>
+{% endblock %}
