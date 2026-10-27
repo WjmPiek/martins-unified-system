@@ -269,6 +269,7 @@ class ModuleSubscriptionRequest(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     owner_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
     franchise_id = db.Column(db.Integer, db.ForeignKey('franchises.id'), nullable=False)
+    admin_alert_sent_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
     owner = db.relationship('User', foreign_keys=[owner_user_id], lazy='joined')
     franchise = db.relationship('Franchise', lazy='joined')

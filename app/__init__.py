@@ -179,6 +179,12 @@ def create_app(config_class=Config):
         return {"territory_owner_access": app.config.get("TERRITORY_VALUATION_ENABLED", False) and can_view_territories(current_user)}
 
     @app.context_processor
+    def inject_module_trial_warning():
+        from flask_login import current_user
+        from app.module_reminders import trial_warning
+        return {'module_trial_warning': trial_warning(current_user)}
+
+    @app.context_processor
     def inject_static_branding():
         return {
             "brand_logo_url": _static_asset_url("img/logo.png"),

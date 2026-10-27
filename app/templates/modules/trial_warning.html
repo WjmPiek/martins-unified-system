@@ -1,0 +1,21 @@
+{% if module_trial_warning %}
+<dialog id="module-trial-warning" aria-labelledby="trial-warning-title" style="width:min(520px,calc(100% - 32px));box-sizing:border-box;border:0;border-radius:16px;padding:28px;box-shadow:0 16px 60px #0004;">
+<h2 id="trial-warning-title">Your Free Module Trial Is Ending</h2>
+<ul>{% for item in module_trial_warning['items'] %}<li><strong>{{ item.name }}</strong> expires in {{ item.days }} {{ 'day' if item.days == 1 else 'days' }}.</li>{% endfor %}</ul>
+<p>Request a subscription to continue using these modules. Head Office will confirm payment and provide activation codes.</p>
+<p>Your saved module data stays on your franchise account when the trial ends. Manuals remains free.</p>
+<div style="display:flex;align-items:center;flex-wrap:wrap;gap:12px;"><a class="btn button-auto" style="margin:0;" href="{{ url_for('licensing.modules') }}" data-trial-subscribe>Request Subscription</a><button type="button" class="btn secondary button-auto" style="margin:0;" data-trial-dismiss>Remind Me Later</button></div>
+</dialog>
+<script>
+(function(){
+ const dialog=document.getElementById('module-trial-warning');
+ const key={{ module_trial_warning.dismiss_key|tojson }};
+ function dismiss(){try{localStorage.setItem(key,'1');}catch(e){}}
+ let seen=false;try{seen=localStorage.getItem(key)==='1';}catch(e){}
+ dialog.querySelector('[data-trial-subscribe]').addEventListener('click',dismiss);
+ dialog.querySelector('[data-trial-dismiss]').addEventListener('click',function(){dismiss();dialog.close();});
+ dialog.addEventListener('cancel',dismiss);
+ if(!seen && typeof dialog.showModal==='function')dialog.showModal();
+})();
+</script>
+{% endif %}

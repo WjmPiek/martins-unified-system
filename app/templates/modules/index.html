@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 {% block app_content %}
-<section class="page-section"><div class="section-header"><div><h1>My Modules</h1><p>Choose the modules for your main franchise. Optional modules include a 30-day trial.</p></div></div>
+<section class="page-section"><div class="section-header"><div><h1>My Modules</h1><p>Choose the modules for your main franchise. Optional modules include a 30-day trial.</p><p>Your saved module data remains on your franchise account when a trial ends. Activate the same account to continue using it.</p></div></div>
 <div class="form-section-card"><h2>Your Franchise Account</h2><p><strong>{{ owner.full_name }}</strong> · {{ owner.email }}</p><p>Main franchise: <strong>{{ primary_franchise.business_name if primary_franchise else 'Awaiting Head Office assignment' }}</strong></p></div>
 <form method="post" action="{{ url_for('licensing.request_modules') }}" id="module-selection">
 <input type="hidden" name="csrf_token" value="{{ registration_csrf }}">
