@@ -77,7 +77,9 @@ def request_modules():
     plans = ModulePlan.query.filter(ModulePlan.module_code.in_(selected)).with_for_update().all()
     if len(plans) != len(selected):
         abort(409, 'Module pricing is being configured. Please contact Head Office.')
-    application = ModuleSubscriptionRequest(owner_user_id=owner.id, franchise_id=franchise_id)
+    actor = current_user._get_current_object()
+    identity = getattr(actor, 'identity_account', actor)
+    application = ModuleSubscriptionRequest(owner_user_id=owner.id, franchise_id=franchise_id, requested_by_user_id=identity.id)
     application.items = [ModuleSubscriptionItem(module_code=plan.module_code, monthly_premium=plan.monthly_premium)
                          for plan in plans]
     db.session.add(application)
@@ -89,14 +91,18 @@ def request_modules():
     return redirect(url_for('licensing.modules'))
 
 
-def pending_item(owner_id, module_code):
-    return ModuleSubscriptionItem.query.join(ModuleSubscriptionRequest).filter(
+def pending_item(owner_id, module_code, lock=True):
+    query = ModuleSubscriptionItem.query.join(ModuleSubscriptionRequest).filter(
         ModuleSubscriptionRequest.owner_user_id == owner_id,
         ModuleSubscriptionItem.module_code == module_code,
         ModuleSubscriptionItem.status.in_(['pending', 'code_issued'])
-    ).order_by(ModuleSubscriptionItem.id).with_for_update().first()
+    ).order_by(ModuleSubscriptionItem.id)
+    return query.with_for_update().first() if lock else query.first()
 
 
-def admin_catalog_context():
+def admin_catalog_context(owner_ids=None):
+    requests = ModuleSubscriptionRequest.query
+    if owner_ids is not None:
+        requests = requests.filter(ModuleSubscriptionRequest.owner_user_id.in_(owner_ids))
     return dict(catalog=catalog(), can_edit_prices=can_edit_prices(current_user),
-                subscription_requests=ModuleSubscriptionRequest.query.order_by(ModuleSubscriptionRequest.created_at.desc()).all())
+                subscription_requests=requests.order_by(ModuleSubscriptionRequest.created_at.desc()).all())

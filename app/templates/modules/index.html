@@ -1,25 +1,29 @@
 {% extends 'base.html' %}
 {% block app_content %}
 <section class="page-section"><div class="section-header"><div><h1>Subscriptions</h1><p>Manage plans, trials, subscription requests and activation codes for your franchise modules.</p><p>Your saved module data remains on your franchise account when a trial ends. Activate the same account to continue using it.</p></div></div>
-<div class="form-section-card"><h2>Your Franchise Account</h2><p><strong>{{ owner.full_name }}</strong> · {{ owner.email }}</p><p>Main franchise: <strong>{{ primary_franchise.business_name if primary_franchise else 'Awaiting Head Office assignment' }}</strong></p></div>
+<div class="form-section-card"><h2>Your Franchise Account</h2><p><strong>{{ owner.full_name }}</strong> · {{ owner.identity_account.email if owner.identity_account is defined else owner.email }}</p><p>Main franchise: <strong>{{ primary_franchise.business_name if primary_franchise else 'Awaiting Head Office assignment' }}</strong></p></div>
+{% set available=catalog|rejectattr('code','in',paid_modules)|list %}
+{% if paid_modules %}<div class="form-section-card" id="active-subscriptions"><h2>Active subscriptions</h2>{% for plan in catalog if plan.code in paid_modules %}<p><strong>{{ plan.name }}</strong> · Paid activation — active until Head Office deactivates it.</p>{% endfor %}</div>{% endif %}
+{% if available %}<h2>Available modules</h2>
 <form method="post" action="{{ url_for('licensing.request_modules') }}" id="module-selection">
 <input type="hidden" name="csrf_token" value="{{ registration_csrf }}">
 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px;margin-bottom:20px;">
-{% for plan in catalog %}{% set access=owner.module_access|selectattr('module_code','equalto',plan.code)|first %}
+{% for plan in available %}{% set access=owner.module_access|selectattr('module_code','equalto',plan.code)|first %}
 <article class="form-section-card" style="margin:0;display:flex;flex-direction:column;gap:12px;">
 <h2 style="margin:0;">{{ plan.name }}</h2><p style="margin:0;">{{ plan.description }}</p>
 <p style="font-size:1.5rem;font-weight:750;margin:0;">R{{ '%.2f'|format(plan.price) }} <span style="font-size:.9rem;font-weight:400;">/ month</span></p>
 <p style="margin:0;">{% if plan.code in paid_modules %}Paid activation — active until Head Office deactivates it.{% elif module_active(owner,plan.code) %}Trial active until {{ utc(access.trial_expires_at).strftime('%d %b %Y') }}.{% else %}Inactive{% endif %}</p>
 <label style="display:flex;align-items:center;gap:10px;margin-top:auto;"><input type="checkbox" name="module_codes" value="{{ plan.code }}" data-cents="{{ plan.cents }}" style="width:18px;height:18px;flex:0 0 18px;" {% if plan.code in paid_modules or plan.code in pending_modules or not primary_franchise %}disabled{% endif %}> {% if plan.code in paid_modules %}Already active{% elif plan.code in pending_modules %}Request submitted{% else %}Select {{ plan.name }}{% endif %}</label>
 </article>{% endfor %}
-<article class="form-section-card" style="margin:0;"><h2>Manuals</h2><p>Access franchise manuals and operating guidance.</p><p style="font-size:1.5rem;font-weight:750;">Free</p><p>Permanently available. No activation code required.</p></article>
 </div>
 <div class="form-section-card"><h2>Selected Monthly Total: <span id="monthly-total" aria-live="polite">R0.00</span></h2><p>Select one or more modules. Head Office reviews your request and confirms payment before providing a separate activation code for each module. Payments are arranged with Head Office.</p><button class="button-auto" {% if not primary_franchise %}disabled{% endif %}>Request Selected Modules</button></div>
 </form>
+{% else %}<div class="form-section-card"><h2>All optional modules are active</h2><p>Your active subscriptions are listed above. You can return here to review requests or enter a replacement code from Head Office.</p></div>{% endif %}
+<article class="form-section-card"><h2>Manuals</h2><p>Access franchise manuals and operating guidance.</p><p>Free · Permanently available. No activation code required.</p></article>
 <div class="form-section-card"><h2>Activate a Paid Module</h2><p>After payment is confirmed, Head Office provides a separate code for each module. Codes are linked to your account and can be used once.</p><form method="post"><input type="hidden" name="csrf_token" value="{{ registration_csrf }}"><label for="activation-code">Activation Code</label><input id="activation-code" name="activation_code" maxlength="200" autocomplete="off" required><button class="button-auto">Activate Module</button></form></div>
 {% if subscription_requests %}<div class="form-section-card"><h2>Your Module Requests</h2><p>Prices below are the monthly premiums recorded when you submitted each request.</p>{% for application in subscription_requests %}<h3>Request #{{ application.id }} · {{ application.created_at.strftime('%d %b %Y') }}</h3><p>{{ application.franchise.business_name }} · Monthly total: <strong>R{{ '%.2f'|format(application.monthly_total) }}</strong></p><ul>{% for item in application.items %}<li>{{ modules[item.module_code] }} · R{{ '%.2f'|format(item.monthly_premium) }}/month · {{ {'pending':'Awaiting Head Office','code_issued':'Activation code issued','active':'Activated','deactivated':'Deactivated'}[item.status] }}</li>{% endfor %}</ul>{% endfor %}</div>{% endif %}
 </section>
 <script>
-(function(){const form=document.getElementById('module-selection');const total=document.getElementById('monthly-total');function update(){let cents=0;form.querySelectorAll('input[name="module_codes"]:checked').forEach(input=>{cents+=Number(input.dataset.cents);});total.textContent='R'+(cents/100).toFixed(2);}form.addEventListener('change',update);update();})();
+(function(){const form=document.getElementById('module-selection');const total=document.getElementById('monthly-total');if(!form||!total)return;function update(){let cents=0;form.querySelectorAll('input[name="module_codes"]:checked').forEach(input=>{cents+=Number(input.dataset.cents);});total.textContent='R'+(cents/100).toFixed(2);}form.addEventListener('change',update);update();})();
 </script>
 {% endblock %}
