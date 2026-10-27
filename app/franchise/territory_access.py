@@ -3,7 +3,7 @@ OWNER_EMAIL = "wjm@martinsdirect.com"
 
 
 def is_territory_owner(user):
-    # Never use is_protected_admin: it also accepts a matching display name.
+    # Keep this dedicated owner gate independent of role and administrator logic.
     return bool(user and user.is_authenticated and user.is_active
                 and user.is_active_account
                 and (user.email or "").strip().casefold() == OWNER_EMAIL)

@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block app_content %}
+<section class="page-section">
+<div class="section-header"><div><h1>Registration Applications</h1><p>Verify the applicant and franchise ownership with Head Office records before granting access.</p></div><a class="btn secondary button-auto" href="{{ url_for('admin.franchise_users') }}">Franchise Users</a></div>
+<p>Pending applications have no login or franchise access. Approval creates a Franchise User linked only to the selected franchise. Complete royalty settings for new franchises in Franchise Details before reporting begins.</p>
+{% for application in applications %}
+<article class="form-section-card"><h2>{{ application.business_name }} — {{ application.status|capitalize }}</h2>
+<p><strong>{{ application.name }} {{ application.surname }}</strong> · {{ application.email }} · {{ application.phone }}<br>Submitted {{ application.created_at.strftime('%d %b %Y %H:%M') }} UTC</p>
+{% if application.status == 'pending' %}
+<form method="post" action="{{ url_for('registration.review',application_id=application.id) }}">
+<input type="hidden" name="csrf_token" value="{{ registration_csrf }}">
+<label for="franchise-{{ application.id }}">Franchise to link on approval</label>
+<select id="franchise-{{ application.id }}" name="franchise_id"><option value="">Select the verified franchise</option><option value="new">Create new: {{ application.business_name }}</option>{% for franchise in franchises %}<option value="{{ franchise.id }}">{{ franchise.business_name }}</option>{% endfor %}</select>
+<p class="muted">Use the existing record if already on the system. An active owner cannot be replaced through registration.</p>
+<div style="display:flex;gap:16px;flex-wrap:wrap;"><label style="flex:1;">Agreement Start Date (new franchise only)<input name="agreement_start_date" type="date"></label><label style="flex:1;">Agreement End Date (new franchise only)<input name="agreement_end_date" type="date"></label></div>
+<label for="note-{{ application.id }}">Internal Review Note</label><textarea id="note-{{ application.id }}" name="review_note" maxlength="1000"></textarea>
+<label style="display:flex;gap:10px;align-items:flex-start;"><input name="review_confirmed" type="checkbox" value="yes" style="width:18px;height:18px;min-width:18px;max-width:18px;flex:0 0 18px;padding:0;margin:3px 0 0;" required><span style="flex:1;">I have checked the applicant and franchise details against Head Office records.</span></label>
+<div class="button-row"><button class="button-auto" name="action" value="approve">Approve and Activate</button><button class="btn danger button-auto" name="action" value="reject">Reject Application</button></div>
+</form>
+{% else %}<p>Reviewed {{ application.reviewed_at.strftime('%d %b %Y %H:%M') if application.reviewed_at else '' }} UTC{% if application.user_id %} · User #{{ application.user_id }}{% endif %}</p>{% if application.review_note %}<p>Review note: {{ application.review_note }}</p>{% endif %}{% endif %}
+</article>
+{% else %}<div class="form-section-card"><p>No registration applications yet.</p></div>{% endfor %}
+</section>
+{% endblock %}

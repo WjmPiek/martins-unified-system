@@ -56,61 +56,8 @@ def home():
 
 @auth_bp.route("/register", methods=["GET", "POST"])
 def register():
-    if current_user.is_authenticated:
-        return redirect(default_landing_url())
-
-    if request.method == "POST":
-        name = request.form.get("name", "").strip()
-        surname = request.form.get("surname", "").strip()
-        email = request.form.get("email", "").strip().lower()
-        password = request.form.get("password", "")
-        confirm_password = request.form.get("confirm_password", "")
-
-        if not name or not surname or not email or not password:
-            flash("Please complete all required fields.", "danger")
-            return render_template("auth/register.html")
-
-        if password != confirm_password:
-            flash("Passwords do not match.", "danger")
-            return render_template("auth/register.html")
-
-        if len(password) < 8:
-            flash("Password must be at least 8 characters.", "danger")
-            return render_template("auth/register.html")
-
-        existing_user = User.query.filter_by(email=email).first()
-        if existing_user:
-            flash("An account with this email already exists.", "warning")
-            return redirect(url_for("auth.login"))
-
-        user = User(name=name, surname=surname, email=email)
-        user.set_password(password)
-
-        franchise = Franchise.query.order_by(Franchise.id.asc()).first()
-        if not franchise:
-            franchise = Franchise(business_name="Martin's Funerals Franchise")
-            db.session.add(franchise)
-            db.session.flush()
-        user.franchise_id = franchise.id
-        user.assigned_franchises.append(franchise)
-
-
-        # The first registered user becomes Admin so the system can be configured.
-        default_role_name = "Admin" if User.query.count() == 0 else "Franchise User"
-        role = Role.query.filter_by(name=default_role_name).first()
-        if not role:
-            role = Role(name=default_role_name, description=f"Default {default_role_name} role", is_system_role=True)
-            db.session.add(role)
-            db.session.flush()
-        user.roles.append(role)
-
-        db.session.add(user)
-        db.session.commit()
-
-        flash("Registration successful. You can now log in.", "success")
-        return redirect(url_for("auth.login"))
-
-    return render_template("auth/register.html")
+    from app.registration import submit_registration
+    return submit_registration()
 
 
 @auth_bp.route("/login", methods=["GET", "POST"])
