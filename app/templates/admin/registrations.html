@@ -2,7 +2,7 @@
 {% block app_content %}
 <section class="page-section">
 <div class="section-header"><div><h1>Registration Applications</h1><p>Verify the applicant and franchise ownership with Head Office records before granting access.</p></div><a class="btn secondary button-auto" href="{{ url_for('admin.franchise_users') }}">Franchise Users</a></div>
-<p>Pending applications have no login or franchise access. Approval creates a Franchise User linked only to the selected franchise. Complete royalty settings for new franchises in Franchise Details before reporting begins.</p>
+<p>Applications grant no new access until approval. Existing sign-ins keep their passwords and Head Office roles. Approval can add a franchise holder profile using the branch's existing owner record.</p>
 {% for application in applications %}
 <article class="form-section-card"><h2>{{ application.business_name }} — {{ application.status|capitalize }}</h2>
 <p><strong>{{ application.name }} {{ application.surname }}</strong> · {{ application.email }} · {{ application.phone }}<br>Submitted {{ application.created_at.strftime('%d %b %Y %H:%M') }} UTC</p>
@@ -13,6 +13,7 @@
 <label for="franchise-{{ application.id }}">Franchise to link on approval</label>
 <select id="franchise-{{ application.id }}" name="franchise_id"><option value="">Select the verified franchise</option><option value="new">Create new: {{ application.business_name }}</option>{% for franchise in franchises %}<option value="{{ franchise.id }}">{{ franchise.business_name }}</option>{% endfor %}</select>
 <p class="muted">Use the existing record if already on the system. An active owner cannot be replaced through registration.</p>
+<label><input type="checkbox" name="link_existing_profile" value="yes" style="width:auto;"> I have verified this applicant may use the selected branch's existing owner profile. Keep that owner account and its records active.</label>
 <div style="display:flex;gap:16px;flex-wrap:wrap;"><label style="flex:1;">Agreement Start Date (new franchise only)<input name="agreement_start_date" type="date"></label><label style="flex:1;">Agreement End Date (new franchise only)<input name="agreement_end_date" type="date"></label></div>
 <label for="note-{{ application.id }}">Internal Review Note</label><textarea id="note-{{ application.id }}" name="review_note" maxlength="1000"></textarea>
 <label style="display:flex;gap:10px;align-items:flex-start;"><input name="review_confirmed" type="checkbox" value="yes" style="width:18px;height:18px;min-width:18px;max-width:18px;flex:0 0 18px;padding:0;margin:3px 0 0;" required><span style="flex:1;">I have checked the applicant and franchise details against Head Office records.</span></label>

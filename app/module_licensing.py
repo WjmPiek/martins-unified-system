@@ -153,7 +153,9 @@ def manage():
             return redirect(url_for('licensing.manage'))
         else:
             abort(400)
-    owners = User.query.join(User.roles).filter(Role.name == 'Franchise User').order_by(User.name,User.surname).all()
+    from app.models import UserAccessProfile
+    profile_owners = db.select(UserAccessProfile.principal_user_id).where(UserAccessProfile.is_active.is_(True))
+    owners = User.query.outerjoin(User.roles).filter(db.or_(Role.name == 'Franchise User', User.id.in_(profile_owners))).distinct().order_by(User.name,User.surname).all()
     from app.module_catalog import admin_catalog_context
     response = render_template('modules/manage.html', modules=MODULES, owners=owners, generated=generated,
                                selected_owner_id=request.args.get('user_id', type=int), selected_module_code=request.args.get('module_code'),
@@ -175,14 +177,17 @@ def check_external_access():
         abort(403)
     if signed.get('module') != module or not signed.get('email'):
         abort(403)
-    identities = User.query.filter(db.func.lower(User.email) == str(signed['email']).strip().lower())
-    if signed.get('user_id'):
-        user = identities.filter(User.id == signed['user_id']).first()
-    else:
-        # Legacy external modules identify by email. Ambiguous identities must
-        # not inherit the first matching franchise's paid entitlement.
-        matches = identities.all()
-        user = matches[0] if len(matches) == 1 else None
+    user = User.query.filter(db.func.lower(User.email) == str(signed['email']).strip().lower()).first()
+    if user and not user.is_franchise_scoped_user() and not user.has_role('Franchise User'):
+        # A Head Office identity can also hold an explicitly approved branch
+        # profile without adding the holder role to its persistent office roles.
+        from app.models import UserAccessProfile
+        from app.access_profiles import choices, ProfileUser
+        grant = UserAccessProfile.query.filter_by(principal_user_id=user.id, is_active=True).first()
+        if grant:
+            choice = next((item for item in choices(grant.identity) if item['profile'] and item['profile'].id == grant.id), None)
+            if choice:
+                user = ProfileUser(grant.identity, choice)
     # Unknown identities must not be granted an entitlement by this endpoint.
     active = bool(user and user.is_active and user.is_active_account and user.has_permission(module))
     expires = None

@@ -81,12 +81,11 @@ def submit_registration():
             error = 'This email is already registered. Please use Log in or Forgot password.'
         if not error:
             existing = User.query.filter(db.func.lower(User.email) == fields['email']).first()
-            from app.account_identity import can_share_owner_email
             application = FranchiseRegistration.query.filter(
                 db.func.lower(FranchiseRegistration.email) == fields['email'],
                 db.func.lower(FranchiseRegistration.business_name) == fields['business_name'].lower()).first()
-            if (existing and not can_share_owner_email(fields['email'])) or application:
-                error = 'This email already has an account or application. Contact Head Office for help, or use Log in / Forgot password if already approved.'
+            if application:
+                error = 'This email already has an application for this franchise. Contact Head Office for help.'
             else:
                 application = FranchiseRegistration(**fields, password_hash=generate_password_hash(password))
                 db.session.add(application)
@@ -142,10 +141,7 @@ def review(application_id):
         flash('Verify the applicant and franchise ownership before reviewing.', 'danger')
         return redirect(url_for('registration.applications'))
     if action == 'approve':
-        from app.account_identity import can_share_owner_email
-        if not can_share_owner_email(application.email):
-            flash('An account already uses this email. Resolve the existing account before approval.', 'danger')
-            return redirect(url_for('registration.applications'))
+        existing_identity = User.query.filter(db.func.lower(User.email) == application.email.lower()).first()
         franchise_id = request.form.get('franchise_id', '')
         if franchise_id == 'new':
             if Franchise.query.filter(db.func.lower(Franchise.business_name) == application.business_name.lower()).first():
@@ -175,27 +171,41 @@ def review(application_id):
                 return redirect(url_for('registration.applications'))
         # Lock the franchise as well: two applications must not claim one owner slot.
         db.session.query(Franchise).filter_by(id=franchise.id).with_for_update().one()
-        if not can_share_owner_email(application.email, franchise.id):
+        from app.profile_admin import branch_owner
+        from app.access_profiles import active, grant_profile
+        try:
+            owner = branch_owner(franchise)
+        except ValueError as exc:
             db.session.rollback()
-            flash('This email already has an account for that franchise. Reactivate or edit the existing account.', 'danger')
+            flash(str(exc), 'danger')
             return redirect(url_for('registration.applications'))
-        owners = [u for u in franchise.assigned_users if u.has_role('Franchise User') and u.is_active_account]
-        if owners:
+        if owner and request.form.get('link_existing_profile') != 'yes':
             db.session.rollback()
-            flash('This franchise already has an active owner. Resolve its existing owner access before approving another application.', 'danger')
+            flash('This franchise already has an active owner. Verify the applicant and select the existing owner profile confirmation to link access without replacing that owner.', 'danger')
             return redirect(url_for('registration.applications'))
         role = Role.query.filter_by(name='Franchise User').first()
         if not role:
             role = Role(name='Franchise User', is_system_role=True)
             db.session.add(role)
-        user = User(name=application.name, surname=application.surname, email=application.email,
-                    password_hash=application.password_hash, is_active=True, is_active_account=True,
-                    created_by_user_id=current_user.id, roles=[role], assigned_franchises=[franchise])
-        db.session.add(user)
-        db.session.flush()
-        ensure_mandatory_franchise_modules(user)
-        db.session.execute(user_franchises.update().where(user_franchises.c.user_id == user.id)
-                           .where(user_franchises.c.franchise_id == franchise.id).values(is_primary=True))
+        if existing_identity and not active(existing_identity):
+            db.session.rollback()
+            flash('The existing sign-in is inactive. Review and activate it before adding a profile.', 'danger')
+            return redirect(url_for('registration.applications'))
+        user = existing_identity
+        if user is None:
+            user = User(name=application.name, surname=application.surname, email=application.email,
+                        password_hash=application.password_hash, is_active=True, is_active_account=True,
+                        created_by_user_id=current_user.id, roles=[role], assigned_franchises=[] if owner else [franchise])
+            db.session.add(user)
+            db.session.flush()
+            if not owner:
+                ensure_mandatory_franchise_modules(user)
+                db.session.execute(user_franchises.update().where(user_franchises.c.user_id == user.id)
+                                   .where(user_franchises.c.franchise_id == franchise.id).values(is_primary=True))
+        if existing_identity or owner:
+            grant_profile(user, franchise, owner or user, current_user.id)
+            from app.audit import log_action
+            log_action('Access', 'Approved franchise profile', f'Login #{user.id}; franchise #{franchise.id}; owner #{(owner or user).id}')
         application.user_id = user.id
         application.status = 'approved'
     else:
@@ -211,7 +221,7 @@ def review(application_id):
         flash('The account changed during review. Refresh and check the existing account before trying again.', 'danger')
         return redirect(url_for('registration.applications'))
     if action == 'approve':
-        body = f"Head Office has approved your franchise access. Log in at {url_for('auth.login', _external=True)} using your email and the password you chose when applying. If you forgot it, use Forgot password."
+        body = f"Head Office has approved your franchise access. Log in at {url_for('auth.login', _external=True)} using your existing sign-in password if you already had an account, or the password you chose when applying for a new account. Choose the franchise profile, or use Switch profile. If you forgot your sign-in password, use Forgot password."
     else:
         body = 'Head Office has reviewed your application and has not approved access. Please contact Head Office for assistance.'
     sent = notify(application, "Martin's Funerals registration update", body)

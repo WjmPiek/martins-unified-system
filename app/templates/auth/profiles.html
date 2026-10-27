@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% macro chooser() %}
+<style>
+.access-profile-form{padding:12px 24px 0;}
+.access-profile-form .access-profile-option{display:flex!important;flex-direction:row!important;align-items:center!important;gap:12px!important;padding:14px!important;margin:0 0 8px!important;border:1px solid #ded6eb;border-radius:10px;cursor:pointer;}
+.access-profile-form .access-profile-option input[type=radio]{width:18px!important;max-width:18px!important;height:18px!important;min-height:18px!important;min-width:18px!important;flex:0 0 18px!important;padding:0!important;margin:0!important;appearance:auto!important;}
+.access-profile-form button{width:100%;}
+</style>
+<section class="form-section-card" aria-labelledby="profile-heading">
+    <h1 id="profile-heading">Choose your access profile</h1>
+    <p>Use Head Office for your assigned office work. Choose a franchise to work as its holder.</p>
+    <form method="post" action="{{ url_for('auth.login') if signing_in else url_for('auth.profiles') }}" class="access-profile-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <fieldset style="border:0;padding:0;margin:0 0 16px;">
+            <legend style="font-weight:700;margin-bottom:10px;">Access profile</legend>
+            {% for profile in profiles %}
+            <label class="access-profile-option">
+                <input type="radio" name="profile_key" value="{{ profile.key }}" required>
+                <span>{{ profile.label }}</span>
+            </label>
+            {% endfor %}
+        </fieldset>
+        <button type="submit">Open selected profile</button>
+    </form>
+</section>
+{% endmacro %}
+{% block auth_content %}<div class="login-card">{{ chooser() }}</div>{% endblock %}
+{% block app_content %}{{ chooser() }}{% endblock %}

@@ -252,7 +252,10 @@ def get_ordered_linked_franchises_for_user(user):
     # must be able to see the separate royalty rows for every explicitly linked
     # branch and the combined total calculated with the primary branch's scale.
     # Reading assigned_franchises here does not broaden access elsewhere.
-    return ordered_linked_franchises_for_user(user)
+    # The approved profile preserves the existing owner's billing group. Only
+    # royalty summaries read these group links; ordinary screens stay branch-scoped.
+    principal = getattr(user, 'principal_account', user)
+    return ordered_linked_franchises_for_user(principal)
 
 
 def get_user_linked_franchises():

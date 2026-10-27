@@ -68,7 +68,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
     surname = db.Column(db.String(120), nullable=False)
-    email = db.Column(db.String(255), nullable=False, index=True)
+    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     is_active_account = db.Column(db.Boolean, nullable=False, default=True)
@@ -188,24 +188,54 @@ class User(UserMixin, db.Model):
 
     def get_reset_token(self):
         serializer = URLSafeTimedSerializer(current_app.config["SECRET_KEY"])
-        return serializer.dumps({"user_id": self.id, "email": self.email}, salt="password-reset-salt")
+        return serializer.dumps(self.email, salt="password-reset-salt")
 
     @staticmethod
     def verify_reset_token(token, max_age=1800):
         serializer = URLSafeTimedSerializer(current_app.config["SECRET_KEY"])
         try:
-            identity = serializer.loads(token, salt="password-reset-salt", max_age=max_age)
+            email = serializer.loads(token, salt="password-reset-salt", max_age=max_age)
         except (BadSignature, SignatureExpired):
             return None
-        if isinstance(identity, dict):
-            return User.query.filter_by(id=identity.get("user_id"), email=identity.get("email")).first()
-        # Legacy links remain valid only when the email identifies one account.
-        users = User.query.filter_by(email=identity).all()
-        return users[0] if len(users) == 1 else None
+        return User.query.filter_by(email=email).first()
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    from app.access_profiles import session_user
+    try:
+        user = db.session.get(User, int(user_id))
+    except (TypeError, ValueError):
+        return None
+    return session_user(user) if user else None
+
+
+class UserAccessProfile(db.Model):
+    """An explicitly approved branch profile under an existing sign-in.
+
+    The original owner record keeps its billing group, modules and history.
+    Linking a sign-in never changes either account's password or roles.
+    """
+    __tablename__ = 'user_access_profiles'
+    __table_args__ = (db.UniqueConstraint('identity_user_id', 'franchise_id', name='uq_identity_franchise_profile'),)
+    id = db.Column(db.Integer, primary_key=True)
+    identity_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    principal_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey('franchises.id'), nullable=False, index=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    identity = db.relationship('User', foreign_keys=[identity_user_id])
+    principal = db.relationship('User', foreign_keys=[principal_user_id])
+    franchise = db.relationship('Franchise')
+
+
+class FranchiseRetirementBackup(db.Model):
+    __tablename__ = 'franchise_retirement_backups'
+    id = db.Column(db.Integer, primary_key=True)
+    original_franchise_id = db.Column(db.Integer, nullable=False)
+    reason = db.Column(db.String(255), nullable=False)
+    snapshot_json = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now())
 
 
 class FranchiseRegistration(db.Model):

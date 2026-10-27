@@ -94,6 +94,8 @@ def current_user_role_names():
     account as Admin and read legacy single-role fields when present.
     """
     names = {role.name for role in getattr(current_user, "roles", []) or [] if getattr(role, "name", None)}
+    if current_user.is_franchise_scoped_user():
+        return names
 
     for attr in ("role", "role_name", "user_role", "primary_role_name"):
         value = getattr(current_user, attr, None)
@@ -802,13 +804,8 @@ def update_user(user_id):
         flash("Name, surname and email are required.", "danger")
         return redirect(url_for("admin.users"))
 
-    from app.account_identity import can_share_owner_email
     duplicate = User.query.filter(db.func.lower(User.email) == email, User.id != user.id).first()
-    proposed_roles = Role.query.filter(Role.id.in_(role_ids)).all() if role_ids else []
-    shareable_owner = ({role.name for role in proposed_roles} == {"Franchise User"}
-                       and len(franchise_ids) == 1
-                       and can_share_owner_email(email, franchise_ids[0], user.id))
-    if duplicate and not shareable_owner:
+    if duplicate:
         flash("Another user already uses that email address.", "danger")
         return redirect(url_for("admin.users"))
 
@@ -1317,10 +1314,7 @@ def find_franchise_user_for_main_franchise(main_franchise, create_missing=True):
     ):
         if not contact_email:
             continue
-        candidates = User.query.filter(db.func.lower(User.email) == contact_email.strip().lower()).all()
-        user = next((item for item in candidates if item.assigned_franchise_id() == main_franchise.id), None)
-        if user is None and len(candidates) == 1 and not candidates[0].assigned_franchises:
-            user = candidates[0]
+        user = User.query.filter(db.func.lower(User.email) == contact_email.strip().lower()).first()
         if user and not is_admin_side_user(user):
             role = get_or_create_role("Franchise User")
             if role not in user.roles:
@@ -3602,10 +3596,7 @@ def edit_franchise_master_record(franchise_id):
         login_email = text_value("login_email").lower()
         if login_email:
             duplicate = User.query.filter(db.func.lower(User.email) == login_email, User.id != (linked_user.id if linked_user else 0)).first()
-            from app.account_identity import can_share_owner_email
-            is_owner = not linked_user or (linked_user.has_role("Franchise User") and linked_user.is_franchise_scoped_user())
-            shareable = is_owner and can_share_owner_email(login_email, franchise.id, linked_user.id if linked_user else None)
-            if duplicate and not shareable:
+            if duplicate:
                 flash("That login email already belongs to another user.", "danger")
                 return render_template("admin/edit_franchise_master_record.html", franchise=franchise, linked_user=linked_user, scales=scales)
             if linked_user:

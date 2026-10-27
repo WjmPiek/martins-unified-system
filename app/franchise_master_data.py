@@ -679,18 +679,7 @@ def _ensure_franchise_user_link(franchise: Franchise, row: Dict[str, Any]) -> Tu
     if not login_email:
         slug = re.sub(r"[^a-z0-9]+", ".", _master_row_name(row).lower()).strip(".") or f"franchise{franchise.id}"
         login_email = f"{slug}@martinsdirect.com"
-    # An email may belong to several owners. Reuse only this branch's owner
-    # (or a single unassigned account), never another branch's login.
-    candidates = User.query.filter(db.func.lower(User.email) == login_email.lower()).all()
-    user = next((item for item in candidates if item.has_role("Franchise User")
-                 and item.assigned_franchise_id() == franchise.id), None)
-    if not user:
-        unassigned = [item for item in candidates if item.is_franchise_scoped_user() and not item.assigned_franchises]
-        user = unassigned[0] if len(unassigned) == 1 else None
-    if user is None:
-        from app.account_identity import can_share_owner_email
-        if not can_share_owner_email(login_email, franchise.id):
-            raise ValueError('Login email belongs to a Head Office, employee, or existing branch account. Review the franchise master import.')
+    user = User.query.filter(db.func.lower(User.email) == login_email.lower()).first()
     created = 0
     if not user:
         name = str(row.get("Franchisee Name") or _master_row_name(row) or "Franchise").strip()

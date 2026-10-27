@@ -1,4 +1,5 @@
 from decimal import Decimal
+from datetime import datetime, timezone
 
 from sqlalchemy import event
 
@@ -43,7 +44,7 @@ def test_heatmap_table_and_viewport_are_hard_bounded():
             .where(user_franchises.c.franchise_id == franchise.id)
             .values(is_primary=True)
         )
-        db.session.add(UserModuleAccess(user_id=user.id, module_code="heat_map:view", is_enabled=True))
+        db.session.add(UserModuleAccess(user_id=user.id, module_code="heat_map:view", is_enabled=True, paid_activated_at=datetime.now(timezone.utc)))
         db.session.bulk_save_objects([
             HeatmapRecord(
                 franchise_id=franchise.id,

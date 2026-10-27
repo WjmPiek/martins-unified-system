@@ -1,0 +1,24 @@
+{% extends 'base.html' %}
+{% block app_content %}
+<section class="page-section">
+    <div class="section-header"><div><h1>Access Profiles — {{ identity.full_name }}</h1><p>Sign-in: {{ identity.email }}. Existing Head Office roles and password stay unchanged.</p></div></div>
+    <div class="form-section-card">
+        <h2>Franchise holder profiles</h2>
+        {% for profile in profiles %}
+        <p><strong>{{ profile.franchise.business_name }}</strong> — {{ 'Active' if profile.is_active else 'Inactive' }}</p>
+        {% if profile.is_active %}<form method="post"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="profile_id" value="{{ profile.id }}"><button class="btn secondary" type="submit">Remove this profile access</button></form>{% endif %}
+        {% else %}<p>No additional franchise profiles have been approved.</p>{% endfor %}
+    </div>
+    <div class="form-section-card">
+        <h2>Add verified franchise ownership</h2>
+        <p>Select an existing branch. Its owner record, figures, royalty group and module licences are preserved. Linked royalty-group branches appear automatically. Unlink a group branch to remove that branch option, or remove an additional profile above.</p>
+        <form method="post">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <label for="profile-branch">Franchise</label>
+            <select id="profile-branch" name="franchise_id" required><option value="">Choose a branch</option>{% for franchise in franchises %}<option value="{{ franchise.id }}">{{ franchise.business_name }}</option>{% endfor %}</select>
+            <label><input type="checkbox" name="ownership_confirmed" value="yes" required style="width:auto;"> I have verified that {{ identity.full_name }} is authorised to act as holder of this franchise.</label>
+            <button class="btn" type="submit">Add franchise holder profile</button>
+        </form>
+    </div>
+</section>
+{% endblock %}

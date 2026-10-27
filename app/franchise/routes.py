@@ -9,7 +9,6 @@ from app.extensions import db
 from app.audit import log_action
 from app.models import Franchise, RoyaltyScale, User, Role, MonthlyFigure, user_franchises, ensure_mandatory_franchise_modules
 from app.franchise_context import get_accessible_franchises, get_selected_franchise
-from app.account_identity import can_share_owner_email
 
 franchise_bp = Blueprint("franchise", __name__, url_prefix="/franchise")
 
@@ -214,8 +213,8 @@ def create_franchise_user():
     if franchise_code and Franchise.query.filter(db.func.lower(Franchise.franchise_code) == franchise_code.lower()).first():
         flash("That franchise code already belongs to another franchise.", "danger")
         return render_template("franchise/create_franchise_user.html")
-    if not can_share_owner_email(user_email):
-        flash("That email belongs to a Head Office or employee account. Use a franchise owner email.", "danger")
+    if User.query.filter(db.func.lower(User.email) == user_email).first():
+        flash("That email already belongs to an existing user. Enter a new login email.", "danger")
         return render_template("franchise/create_franchise_user.html")
 
     try:
@@ -499,7 +498,7 @@ def user_is_my_franchise_employee(user):
     if not user:
         return False
     if user.parent_franchise_user_id == current_user.id:
-        return True
+        return any(branch.id == current_user.assigned_franchise_id() for branch in user.assigned_franchises) if getattr(current_user, 'profile_franchise', None) else True
     # Safe fallback for older records: employee must be linked only to franchises the owner can access.
     my_franchise_ids = {franchise.id for franchise in franchises_available_for_employee_creation()}
     employee_franchise_ids = {franchise.id for franchise in (user.assigned_franchises or [])}
