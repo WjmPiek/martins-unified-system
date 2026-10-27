@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "includes/_yearly_indicator.html" import yearly_arrow %}
 {% from "performance/_graph_charts.html" import chart_card, graph_assets %}
 {% block head_extra %}
 <style>.graph-grid{margin-top:1rem}.graph-engine-card{border-left:6px solid #0d6efd}.simple-chart{display:grid;gap:.75rem}.chart-row{display:grid;grid-template-columns:110px 1fr 70px;gap:.75rem;align-items:center}.chart-label{font-weight:700}.chart-bars{position:relative;background:#eef2f7;border-radius:999px;min-height:30px;overflow:hidden}.target-line{position:absolute;left:.75rem;top:.2rem;font-size:.75rem;color:#6c757d;z-index:2}.bar.actual{min-width:4%;height:30px;border-radius:999px;background:#198754;color:#fff;padding:.4rem .75rem;white-space:nowrap}.chart-percent{text-align:right;font-weight:700}@media(max-width:700px){.chart-row{grid-template-columns:1fr}.chart-percent{text-align:left}} </style>
@@ -16,7 +17,7 @@
     </div>
 </div>
 
-<form class="filter-bar" method="get">
+<form class="period-selector-card filter-bar" method="get">
     <label>KPI
         <select name="metric_redirect" onchange="if(this.value){ window.location='{{ url_for('performance.kpi', metric_key='cash') }}'.replace('cash', this.value) + '?month={{ selected_month }}&year={{ selected_year }}&target_mode={{ target_mode }}&growth={{ growth }}'; }">
             {% for key, metric in metrics.items() %}<option value="{{ key }}" {% if key == metric_key %}selected{% endif %}>{{ metric.label }}</option>{% endfor %}
@@ -58,12 +59,12 @@
 </div>
 
 {% if my_row %}
-<div class="highlight-card leaderboard-card movement-{{ my_row.movement }}">
+<div class="highlight-card leaderboard-card movement-{{ my_row.yearly_direction }}">
     <div>
         <div class="muted">Your / selected franchise {{ summary.metric.label }} position</div>
         <h2>#{{ my_row.rank }} of {{ summary.rows|length }} — {{ my_row.franchise_name }}</h2>
     </div>
-    <div class="leaderboard-move {{ my_row.movement }}">{{ my_row.movement_label }}{% if my_row.movement_delta %} by {{ my_row.movement_delta|abs }}{% endif %}</div>
+    {{ yearly_arrow(my_row) }}
 </div>
 {% endif %}
 
@@ -155,7 +156,7 @@
             <tr>
                 <td><strong>#{{ row.rank }}</strong></td>
                 <td>{{ row.franchise_name }}</td>
-                <td><span class="leaderboard-move {{ row.movement }}">{{ row.movement_label }}{% if row.movement_delta %} by {{ row.movement_delta|abs }}{% endif %}</span></td>
+                <td>{{ yearly_arrow(row) }}</td>
             </tr>
             {% else %}<tr><td colspan="3">No data.</td></tr>{% endfor %}
             </tbody>
@@ -170,7 +171,7 @@
             <tr>
                 <td><strong>#{{ row.rank }}</strong></td>
                 <td>{{ row.franchise_name }}</td>
-                <td><span class="leaderboard-move {{ row.movement }}">{{ row.movement_label }}{% if row.movement_delta %} by {{ row.movement_delta|abs }}{% endif %}</span></td>
+                <td>{{ yearly_arrow(row) }}</td>
             </tr>
             {% else %}<tr><td colspan="3">No data.</td></tr>{% endfor %}
             </tbody>

@@ -77,36 +77,32 @@
     {% endif %}
     </div>
     {% if accessible_franchises and accessible_franchises|length > 1 %}
-        <form method="get" action="{{ url_for('monthly.index') }}" class="period-filter-form monthly-period-form">
-          <label for="monthlyMonth"><strong>Month</strong></label>
-          <select id="monthlyMonth" name="month">
+        <form method="get" action="{{ url_for('monthly.index') }}" class="period-selector-card period-filter-form monthly-period-form">
+          <div class="period-filter-field"><label for="monthlyMonth"><strong>Month</strong></label><select id="monthlyMonth" name="month">
             {% for value, label in month_options %}
               <option value="{{ value }}" {% if selected_month == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
-          </select>
-          <label for="monthlyYear"><strong>Year</strong></label>
-          <select id="monthlyYear" name="year">
+          </select></div>
+          <div class="period-filter-field"><label for="monthlyYear"><strong>Year</strong></label><select id="monthlyYear" name="year">
             {% for year in year_options %}
               <option value="{{ year }}" {% if selected_year == year %}selected{% endif %}>{{ year }}</option>
             {% endfor %}
-          </select>
+          </select></div>
           <button class="btn secondary button-auto" type="submit">Apply</button>
         </form>
     {% endif %}
     {% if not (accessible_franchises and accessible_franchises|length > 1) %}
-        <form method="get" action="{{ url_for('monthly.index') }}" class="period-filter-form monthly-period-form">
-          <label for="monthlyMonthSolo"><strong>Month</strong></label>
-          <select id="monthlyMonthSolo" name="month">
+        <form method="get" action="{{ url_for('monthly.index') }}" class="period-selector-card period-filter-form monthly-period-form">
+          <div class="period-filter-field"><label for="monthlyMonthSolo"><strong>Month</strong></label><select id="monthlyMonthSolo" name="month">
             {% for value, label in month_options %}
               <option value="{{ value }}" {% if selected_month == value %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
-          </select>
-          <label for="monthlyYearSolo"><strong>Year</strong></label>
-          <select id="monthlyYearSolo" name="year">
+          </select></div>
+          <div class="period-filter-field"><label for="monthlyYearSolo"><strong>Year</strong></label><select id="monthlyYearSolo" name="year">
             {% for year in year_options %}
               <option value="{{ year }}" {% if selected_year == year %}selected{% endif %}>{{ year }}</option>
             {% endfor %}
-          </select>
+          </select></div>
           <button class="btn secondary button-auto" type="submit">Apply</button>
         </form>
     {% endif %}

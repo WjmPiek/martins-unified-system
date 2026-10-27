@@ -12,7 +12,7 @@
 {% include "performance/_targets_nav.html" %}
 <div class="info-banner"><strong>Head Office Target Centre</strong><span>The calculation engine remains unchanged. Use this page to review and save monthly targets.</span></div>
 
-<form class="filter-bar compact-filter-bar" method="get">
+<form class="period-selector-card filter-bar compact-filter-bar" method="get">
     <label>Month<select name="month">{% for value, label in month_options %}<option value="{{ value }}" {% if value == selected_month %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
     <label>Year<select name="year">{% for value in year_options %}<option value="{{ value }}" {% if value == selected_year %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
     <label class="filter-grow">Franchise<input type="search" name="q" value="{{ search }}" placeholder="Search franchise"></label>

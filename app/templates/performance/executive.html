@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "includes/_yearly_indicator.html" import yearly_arrow %}
 {% block app_content %}
 <style>
 .exec-grid{display:grid;grid-template-columns:repeat(6,minmax(128px,1fr));gap:.55rem;margin:1rem 0}.exec-card,.decision-card{background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:.7rem .75rem;box-shadow:0 1px 3px rgba(0,0,0,.06)}.exec-card{min-height:118px}.exec-percent{font-size:1.55rem;font-weight:800;line-height:1.1}.exec-card .muted{font-size:.78rem;line-height:1.25}.exec-card .progress-track{height:8px;margin:.45rem 0}@media(max-width:1500px){.exec-grid{grid-template-columns:repeat(3,minmax(160px,1fr))}}@media(max-width:900px){.exec-grid{grid-template-columns:repeat(2,minmax(140px,1fr))}}@media(max-width:560px){.exec-grid{grid-template-columns:1fr}}.status-good{border-left:6px solid #198754}.status-warning{border-left:6px solid #f59f00}.status-danger{border-left:6px solid #dc3545}.decision-list{display:grid;gap:.65rem}.decision-row{display:grid;grid-template-columns:70px 1fr auto;gap:.75rem;align-items:center;padding:.7rem;border:1px solid #edf0f3;border-radius:10px}.rank-pill{font-weight:800}.leaderboard-move{padding:.25rem .55rem;border-radius:999px;font-weight:700;display:inline-block}.leaderboard-move.up{background:#d1e7dd;color:#0f5132}.leaderboard-move.down{background:#f8d7da;color:#842029}.leaderboard-move.same{background:#fff3cd;color:#664d03}.muted{color:#6c757d}.button-row{display:flex;gap:.5rem;flex-wrap:wrap}.section-split{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:1rem}.progress-track{height:10px;background:#e5e7eb;border-radius:999px;overflow:hidden;margin:.5rem 0}.progress-fill{height:100%;background:#198754}.status-warning .progress-fill{background:#f59f00}.status-danger .progress-fill{background:#dc3545}@media(max-width:700px){.decision-row{grid-template-columns:1fr}.decision-row>*{text-align:left}}
@@ -17,7 +18,7 @@
     </div>
 </div>
 
-<form class="filter-bar" method="get">
+<form class="period-selector-card filter-bar" method="get">
     <label>Month
         <select name="month">
             {% for value, label in month_options %}<option value="{{ value }}" {% if value == selected_month %}selected{% endif %}>{{ label }}</option>{% endfor %}
@@ -57,7 +58,8 @@
         {% for row in executive.top_performers %}
             <div class="decision-row">
                 <div class="rank-pill">#{{ row.rank }}</div>
-                <div><strong>{{ row.franchise_name }}</strong><br><span class="muted">Overall score {{ row.score }}%</span></div>
+                <div><strong>{{ row.franchise_name }}</strong></div>
+                {{ yearly_arrow(row) }}
                 <a href="{{ url_for('performance.franchise', franchise_id=row.franchise_id, month=selected_month, year=selected_year, target_mode=target_mode, growth=growth) }}">Open</a>
             </div>
         {% else %}<p>No performance data yet.</p>{% endfor %}
@@ -88,7 +90,7 @@
             <div class="decision-row">
                 <div class="rank-pill">#{{ row.rank }}</div>
                 <div><strong>{{ row.franchise_name }}</strong></div>
-                <span class="leaderboard-move up">{{ row.movement_text }}</span>
+                {{ yearly_arrow(row) }}
             </div>
         {% else %}<p>No climbers this month.</p>{% endfor %}
         </div>
@@ -102,7 +104,7 @@
             <div class="decision-row">
                 <div class="rank-pill">#{{ row.rank }}</div>
                 <div><strong>{{ row.franchise_name }}</strong></div>
-                <span class="leaderboard-move down">{{ row.movement_text }}</span>
+                {{ yearly_arrow(row) }}
             </div>
         {% else %}<p>No major drops this month.</p>{% endfor %}
         </div>
@@ -122,7 +124,7 @@
                     <td>{{ item.metric_label }}</td>
                     <td>#{{ item.rank }}</td>
                     <td>{{ item.achievement }}%</td>
-                    <td><span class="leaderboard-move {{ item.movement }}">{{ item.movement_text }}</span></td>
+                    <td>{{ yearly_arrow(item) }}</td>
                     <td><a href="{{ url_for('performance.franchise', franchise_id=item.franchise_id, month=selected_month, year=selected_year, target_mode=target_mode, growth=growth) }}">Open</a></td>
                 </tr>
             {% else %}

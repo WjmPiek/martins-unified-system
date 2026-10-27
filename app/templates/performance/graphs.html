@@ -12,7 +12,7 @@
     </div>
   </div>
 
-  <form class="performance-filter-card instant-filter-bar" method="get" id="performanceGraphFilters">
+  <form class="period-selector-card performance-filter-card instant-filter-bar" method="get" id="performanceGraphFilters">
     <label>Month
       <select name="month">
         {% for value, label in month_options %}<option value="{{ value }}" {% if value == selected_month %}selected{% endif %}>{{ label }}</option>{% endfor %}

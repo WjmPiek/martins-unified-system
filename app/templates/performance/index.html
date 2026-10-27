@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "includes/_yearly_indicator.html" import yearly_arrow %}
 {% block app_content %}
 <div class="page-header">
     <div>
@@ -7,17 +8,25 @@
     </div>
 </div>
 
+<form class="period-selector-card" method="get">
+    <label>Month<select name="month">{% for value, label in month_options %}<option value="{{ value }}" {% if value == selected_month %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <label>Year<select name="year">{% for value in year_options %}<option value="{{ value }}" {% if value == selected_year %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
+    <input type="hidden" name="target_mode" value="{{ target_mode }}">
+    <input type="hidden" name="growth" value="{{ growth }}">
+    <button class="btn" type="submit">Update</button>
+</form>
+
 <div class="leaderboard-five-grid">
     {% for board in metric_boards %}
     <section class="leaderboard-column panel-card">
         <h3>{{ board.title }}</h3>
-        <p class="muted leaderboard-note">Ranking is based on YTD actuals versus YTD targets.</p>
+        <p class="muted leaderboard-note">Arrows compare YTD performance with the same period last year.</p>
         <div class="mini-leaderboard-list">
             {% for row in board.rows %}
-            <div class="mini-leaderboard-row leaderboard-static-row movement-{{ row.movement }}">
+            <div class="mini-leaderboard-row leaderboard-static-row movement-{{ row.yearly_direction }}">
                 <span class="mini-rank">#{{ row.rank }}</span>
                 <span class="mini-name">{{ row.franchise_name }}</span>
-                <span class="mini-score">{{ row.achievement_percent }}%</span>
+                {{ yearly_arrow(row) }}
             </div>
             {% else %}
             <div class="mini-leaderboard-empty">No data</div>

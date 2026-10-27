@@ -7,7 +7,7 @@
     </div>
 </div>
 
-<form class="filter-bar" method="get">
+<form class="period-selector-card filter-bar" method="get">
     <label>Month<select name="month">{% for value, label in month_options %}<option value="{{ value }}" {% if value == selected_month %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
     <label>Year<select name="year">{% for value in year_options %}<option value="{{ value }}" {% if value == selected_year %}selected{% endif %}>{{ value }}</option>{% endfor %}</select></label>
     <button class="btn" type="submit">Check</button>

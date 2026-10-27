@@ -180,8 +180,10 @@ def weighted_score(actuals, targets):
 
 
 def build_rankings(month, year, franchise_ids):
+    from app.year_comparison import yearly_indicator
     franchises = Franchise.query.filter(Franchise.id.in_(franchise_ids)).order_by(Franchise.business_name.asc()).all() if franchise_ids else []
     actuals = query_metric_totals(month, year, franchise_ids)
+    previous_actuals = query_metric_totals(month, year - 1, franchise_ids)
     targets = query_targets(month, year, franchise_ids)
     rows = []
     for franchise in franchises:
@@ -202,6 +204,8 @@ def build_rankings(month, year, franchise_ids):
     rows.sort(key=lambda item: (item["score"], item["actuals"].get("gross_turnover", Decimal("0"))), reverse=True)
     for index, row in enumerate(rows, start=1):
         row["rank"] = index
+        row.update(yearly_indicator(actuals.get(row['franchise_id']), previous_actuals.get(row['franchise_id']),
+                                    {key: config['weight'] for key, config in METRICS.items()}))
     return rows
 
 
@@ -257,6 +261,8 @@ def build_dashboard_leaderboard_snapshot(franchise_id, month=None, year=None):
         "rank": my_row["rank"],
         "total": len(rows),
         "franchise_name": my_row["franchise_name"],
+        "yearly_direction": my_row["yearly_direction"],
+        "yearly_label": my_row["yearly_label"],
         "movement_label": my_row["movement_label"],
         "movement_class": my_row["movement_class"],
         "movement_delta": my_row["movement_delta"],
@@ -271,9 +277,7 @@ def build_dashboard_leaderboard_snapshot(franchise_id, month=None, year=None):
 @permission_required("leaderboard:view")
 def index():
     month, year = selected_period()
-    compare_to = request.args.get("compare_to", "previous_month")
-    if compare_to not in {"previous_month", "same_month_last_year"}:
-        compare_to = "previous_month"
+    compare_to = "same_month_last_year"
     prev_month, prev_year = comparison_period(month, year, compare_to)
     franchise_ids = accessible_franchise_ids()
     current_rows = build_rankings(month, year, franchise_ids)

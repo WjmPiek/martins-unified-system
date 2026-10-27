@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "includes/_yearly_indicator.html" import yearly_arrow %}
 {% from "performance/_graph_charts.html" import chart_card, graph_assets %}
 
 {% block head_extra %}
@@ -21,7 +22,7 @@
     </div>
 </div>
 
-<form class="filter-bar" method="get">
+<form class="period-selector-card filter-bar" method="get">
     <label>Month
         <select name="month">
             {% for value, label in month_options %}<option value="{{ value }}" {% if value == selected_month %}selected{% endif %}>{{ label }}</option>{% endfor %}
@@ -50,10 +51,10 @@
         <div class="leaderboard-move {{ 'up' if dashboard.health_score >= 90 else 'same' if dashboard.health_score >= 75 else 'down' }}">{{ dashboard.health_label }}</div>
     </div>
     {% if dashboard.snapshot %}
-    <div class="highlight-card movement-{{ dashboard.snapshot.movement }}">
+    <div class="highlight-card movement-{{ dashboard.snapshot.yearly_direction }}">
         <div class="muted">Leaderboard Position</div>
         <h2>#{{ dashboard.snapshot.rank }} of {{ dashboard.snapshot.total }}</h2>
-        <div class="leaderboard-move {{ dashboard.snapshot.movement }}">{{ dashboard.snapshot.movement_label }}{% if dashboard.snapshot.movement_delta %} {{ dashboard.snapshot.movement_delta|abs }}{% endif %}</div>
+        {{ yearly_arrow(dashboard.snapshot) }}
     </div>
     {% endif %}
 </div>

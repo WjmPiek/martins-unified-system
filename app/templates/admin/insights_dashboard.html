@@ -8,13 +8,14 @@
             <h1>Insight Explanations</h1>
             <p class="muted">Clear, traceable explanations generated from monthly figures, royalty snapshots and Business Intelligence health scoring.</p>
         </div>
-        <form method="get" class="insights-period-form" aria-label="Select reporting period">
+        </div>
+
+    <form method="get" class="period-selector-card insights-period-form" aria-label="Select reporting period">
             <input type="hidden" name="tab" value="{{ active_tab }}">
             <label><span>Month</span><input type="number" name="month" min="1" max="12" value="{{ selected_month }}" required></label>
             <label><span>Year</span><input type="number" name="year" min="2000" max="2100" value="{{ selected_year }}" required></label>
             <button class="btn btn-primary" type="submit">View Period</button>
         </form>
-    </div>
 
     <nav class="insights-tabs" aria-label="Insight explanation sections">
         <a class="{{ 'active' if active_tab == 'executive' else '' }}" href="{{ url_for('admin.insights_dashboard', tab='executive', year=selected_year, month=selected_month) }}">
