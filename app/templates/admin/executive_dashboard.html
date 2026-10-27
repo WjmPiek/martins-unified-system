@@ -9,7 +9,9 @@
             <h1>Executive Dashboard</h1>
             <p class="muted">High-level company performance, royalty health and operational status in one place.</p>
         </div>
-        <form method="get" class="inline-form card compact-form">
+        </div>
+
+    <form method="get" class="period-selector-card inline-form card compact-form">
             <label>Month
                 <input type="number" name="month" min="1" max="12" value="{{ selected_month }}" required>
             </label>
@@ -18,7 +20,6 @@
             </label>
             <button class="btn btn-primary" type="submit">View Period</button>
         </form>
-    </div>
 
     <div class="section-title-row" id="executive-summary" data-page-section="executive-summary" data-title="Executive Summary">
         <h2>{{ selected_year }}-{{ "%02d"|format(selected_month) }} Executive Summary</h2>

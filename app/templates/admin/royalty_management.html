@@ -9,7 +9,9 @@
             <h1>Royalty Management</h1>
             <p class="muted">Current royalty formula is preserved. This page adds snapshots, diagnostics and controlled recalculation.</p>
         </div>
-        <form method="post" action="{{ url_for('admin.royalty_management_recalculate') }}" class="inline-form card compact-form">
+        </div>
+
+    <form method="post" action="{{ url_for('admin.royalty_management_recalculate') }}" class="period-selector-card inline-form card compact-form">
             <label>Month
                 <input type="number" name="month" min="1" max="12" value="{{ selected_month }}" required>
             </label>
@@ -18,7 +20,6 @@
             </label>
             <button type="submit" class="btn btn-primary">Recalculate Royalties</button>
         </form>
-    </div>
 
     <div class="stats-grid">
         <div class="stat-card"><span>Snapshots</span><strong>{{ summary.snapshot_total }}</strong><small>All stored calculations</small></div>

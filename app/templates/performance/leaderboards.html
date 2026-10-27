@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "includes/_yearly_indicator.html" import yearly_arrow %}
 {% block app_content %}
 <div class="page-header">
     <div>
@@ -11,7 +12,7 @@
     </div>
 </div>
 
-<form class="filter-bar" method="get">
+<form class="period-selector-card filter-bar" method="get">
     <label>Month
         <select name="month">
             {% for value, label in month_options %}<option value="{{ value }}" {% if value == selected_month %}selected{% endif %}>{{ label }}</option>{% endfor %}
@@ -32,22 +33,22 @@
     <div class="section-header">
         <div>
             <h2>{{ board.label }}</h2>
-            <p class="muted">{{ selected_period_label }} ranking. Current rank decides the position; previous month only decides movement.</p>
+            <p class="muted">{{ selected_period_label }} ranking. Arrows compare performance with the same period last year.</p>
         </div>
     </div>
 
     <div class="dashboard-grid three">
         <div class="highlight-card">
             <div class="muted">Top franchise</div>
-            {% if board.rows %}<h3>#1 {{ board.rows[0].franchise_name }}</h3><div class="leaderboard-move {{ board.rows[0].movement }}">{{ board.rows[0].movement_text }}</div>{% else %}<h3>No data</h3>{% endif %}
+            {% if board.rows %}<h3>#1 {{ board.rows[0].franchise_name }}</h3>{{ yearly_arrow(board.rows[0]) }}{% else %}<h3>No data</h3>{% endif %}
         </div>
         <div class="highlight-card">
             <div class="muted">Biggest climber</div>
-            {% if board.biggest_climbers %}<h3>#{{ board.biggest_climbers[0].rank }} {{ board.biggest_climbers[0].franchise_name }}</h3><div class="leaderboard-move up">{{ board.biggest_climbers[0].movement_text }}</div>{% else %}<h3>None</h3><div class="leaderboard-move same">Same</div>{% endif %}
+            {% if board.biggest_climbers %}<h3>#{{ board.biggest_climbers[0].rank }} {{ board.biggest_climbers[0].franchise_name }}</h3>{{ yearly_arrow(board.biggest_climbers[0]) }}{% else %}<h3>None</h3><div class="leaderboard-move same">Same</div>{% endif %}
         </div>
         <div class="highlight-card">
             <div class="muted">Needs attention</div>
-            {% if board.biggest_droppers %}<h3>#{{ board.biggest_droppers[0].rank }} {{ board.biggest_droppers[0].franchise_name }}</h3><div class="leaderboard-move down">{{ board.biggest_droppers[0].movement_text }}</div>{% else %}<h3>None</h3><div class="leaderboard-move same">Stable</div>{% endif %}
+            {% if board.biggest_droppers %}<h3>#{{ board.biggest_droppers[0].rank }} {{ board.biggest_droppers[0].franchise_name }}</h3>{{ yearly_arrow(board.biggest_droppers[0]) }}{% else %}<h3>None</h3><div class="leaderboard-move same">Stable</div>{% endif %}
         </div>
     </div>
 
@@ -59,7 +60,7 @@
                 <tr>
                     <td><strong>#{{ row.rank }}</strong></td>
                     <td>{{ row.franchise_name }}</td>
-                    <td><span class="leaderboard-move {{ row.movement }}">{{ row.movement_text }}</span></td>
+                    <td>{{ yearly_arrow(row) }}</td>
                     <td>{{ row.decision_label }}</td>
                     <td><a href="{{ url_for('performance.franchise', franchise_id=row.franchise_id, month=selected_month, year=selected_year, target_mode=target_mode, growth=growth) }}">Open</a></td>
                 </tr>

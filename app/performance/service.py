@@ -998,6 +998,24 @@ def ranked_performance(month, year, franchise_ids, mode="manual", growth_percent
     rows.sort(key=lambda item: (item["score"], item["actual"]), reverse=True)
     for index, row in enumerate(rows, start=1):
         row["rank"] = index
+    return attach_yearly_performance(rows, metric_key, month, year, franchise_ids)
+
+
+def attach_yearly_performance(rows, metric_key, month, year, franchise_ids, *, ytd=False):
+    from app.year_comparison import yearly_indicator
+    weights = {key: metric['weight'] for key, metric in PERFORMANCE_METRICS.items()}
+    if ytd:
+        def actuals_for(target_year):
+            totals = _bulk_ytd_metric_totals(month, target_year, franchise_ids)
+            return {fid: {key: values['actual'] for key, values in metrics.items()}
+                    for fid, metrics in totals.items() if any(v.get('has_data') for v in metrics.values())}
+        current, previous = actuals_for(year), actuals_for(year - 1)
+    else:
+        current = period_actuals(month, year, franchise_ids)
+        previous = period_actuals(month, year - 1, franchise_ids)
+    for row in rows:
+        fid = row['franchise_id']
+        row.update(yearly_indicator(current.get(fid), previous.get(fid), weights, metric_key))
     return rows
 
 
@@ -1071,6 +1089,8 @@ def dashboard_snapshot(franchise_id, month=None, year=None, mode="manual", growt
         "rank": my_row["rank"],
         "total": len(rows),
         "franchise_name": my_row["franchise_name"],
+        "yearly_direction": my_row["yearly_direction"],
+        "yearly_label": my_row["yearly_label"],
         "movement_label": my_row["movement_label"],
         "movement": my_row["movement"],
         "movement_delta": my_row["movement_delta"],
@@ -1826,7 +1846,7 @@ def _bulk_ytd_metric_totals(month, year, franchise_ids):
     def load():
         totals = {
             fid: {
-                metric: {"actual": Decimal("0"), "target": Decimal("0")}
+                metric: {"actual": Decimal("0"), "target": Decimal("0"), "has_data": False}
                 for metric in PERFORMANCE_METRICS
             }
             for fid in franchise_ids
@@ -1867,6 +1887,7 @@ def _bulk_ytd_metric_totals(month, year, franchise_ids):
             totals[fid][metric] = {
                 "actual": to_decimal(row.actual),
                 "target": to_decimal(row.target),
+                "has_data": True,
             }
 
         if missing:
@@ -1911,6 +1932,7 @@ def _bulk_ytd_metric_totals(month, year, franchise_ids):
                 totals[fid][metric] = {
                     "actual": raw_actuals.get((fid, metric), Decimal("0")),
                     "target": raw_targets.get((fid, metric), Decimal("0")),
+                    "has_data": (fid, metric) in raw_actuals,
                 }
         return totals
 
@@ -1940,7 +1962,7 @@ def _ytd_metric_rows(metric_key, month, year, franchise_ids, mode='growth_bracke
     rows.sort(key=lambda item: (item['score'], item['actual']), reverse=True)
     for index, row in enumerate(rows, 1):
         row['rank'] = index
-    return rows
+    return attach_yearly_performance(rows, metric_key, month, year, franchise_ids, ytd=True)
 
 
 def leaderboard_rows(metric_key, month, year, franchise_ids, mode='growth_bracket', growth_percent=DEFAULT_GROWTH_PERCENT):
@@ -1948,17 +1970,17 @@ def leaderboard_rows(metric_key, month, year, franchise_ids, mode='growth_bracke
     if metric_key != 'overall' and metric_key not in PERFORMANCE_METRICS:
         metric_key = 'overall'
     if metric_key == 'overall':
-        return ranked_performance(month, year, franchise_ids, mode, growth_percent, metric_key)
-    prev_m, prev_y = previous_month(month, year)
-    current_rows = _ytd_metric_rows(metric_key, month, year, franchise_ids, mode, growth_percent)
-    previous_rows = _ytd_metric_rows(metric_key, prev_m, prev_y, franchise_ids, mode, growth_percent)
-    rows = attach_movement(current_rows, previous_rows)
+        rows = ranked_performance(month, year, franchise_ids, mode, growth_percent, metric_key)
+    else:
+        rows = _ytd_metric_rows(metric_key, month, year, franchise_ids, mode, growth_percent)
     rows.sort(key=lambda item: item['rank'])
     for row in rows:
-        row['movement_text'] = movement_text(row)
-        if row.get('movement') == 'up':
+        row['movement'] = row['yearly_direction']
+        row['movement_delta'] = row['yearly_change']
+        row['movement_text'] = row['yearly_label']
+        if row.get('yearly_direction') == 'up':
             row['decision_label'] = 'Improving'
-        elif row.get('movement') == 'down':
+        elif row.get('yearly_direction') == 'down':
             row['decision_label'] = 'Needs attention'
         else:
             row['decision_label'] = 'Stable'
@@ -2028,6 +2050,8 @@ def executive_dashboard(month, year, franchise_ids, mode='growth_bracket', growt
             'franchise_name': row['franchise_name'],
             'rank': row['rank'],
             'movement': row.get('movement'),
+            'yearly_direction': row.get('yearly_direction'),
+            'yearly_label': row.get('yearly_label'),
             'movement_text': row.get('movement_text') or movement_text(row),
             'health_score': health,
             'health_label': health_label(health),
@@ -2056,6 +2080,8 @@ def executive_dashboard(month, year, franchise_ids, mode='growth_bracket', growt
                     'rank': row['rank'],
                     'achievement': row.get('achievement'),
                     'movement': row.get('movement'),
+                    'yearly_direction': row.get('yearly_direction'),
+                    'yearly_label': row.get('yearly_label'),
                     'movement_text': row.get('movement_text') or movement_text(row),
                 })
     forecast_risk.sort(key=lambda item: to_decimal(item['achievement']))

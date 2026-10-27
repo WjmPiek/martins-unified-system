@@ -11,19 +11,17 @@
 </div>
 
 <div class="form-section-card leaderboard-filter-card">
-  <form method="get" action="{{ url_for('leaderboard.targets') }}" class="period-filter-form leaderboard-filters">
-    <label for="targetMonth"><strong>Month</strong></label>
-    <select id="targetMonth" name="month">
+  <form method="get" action="{{ url_for('leaderboard.targets') }}" class="period-selector-card period-filter-form leaderboard-filters">
+    <div class="period-filter-field"><label for="targetMonth"><strong>Month</strong></label><select id="targetMonth" name="month">
       {% for value, label in month_options %}
         <option value="{{ value }}" {% if selected_month == value %}selected{% endif %}>{{ label }}</option>
       {% endfor %}
-    </select>
-    <label for="targetYear"><strong>Year</strong></label>
-    <select id="targetYear" name="year">
+    </select></div>
+    <div class="period-filter-field"><label for="targetYear"><strong>Year</strong></label><select id="targetYear" name="year">
       {% for year in year_options %}
         <option value="{{ year }}" {% if selected_year == year %}selected{% endif %}>{{ year }}</option>
       {% endfor %}
-    </select>
+    </select></div>
     <button class="btn secondary button-auto" type="submit">Change Period</button>
   </form>
 </div>

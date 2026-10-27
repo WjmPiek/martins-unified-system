@@ -286,3 +286,181 @@ button.primary:hover,
     box-shadow: none !important;
   }
 }
+
+/* One title and reporting-period layout across the integrated modules. */
+.yearly-indicator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  font-size: 25px;
+  font-weight: 800;
+  line-height: 1;
+}
+.yearly-indicator.yearly-up { color: #18743b !important; }
+.yearly-indicator.yearly-down { color: #ba2635 !important; }
+.yearly-down svg { transform: rotate(180deg); }
+.yearly-indicator:is(.yearly-same, .yearly-unavailable) { color: #64707d !important; }
+html body.app-body .content-area .leaderboard-five-grid { grid-template-columns: repeat(5, minmax(0, 1fr)) !important; }
+@media (max-width: 1400px) {
+  html body.app-body .content-area .leaderboard-five-grid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; }
+}
+@media (max-width: 1100px) {
+  html body.app-body .content-area .leaderboard-five-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+}
+@media (max-width: 700px) {
+  html body.app-body .content-area .leaderboard-five-grid { grid-template-columns: minmax(0, 1fr) !important; }
+}
+html body.app-body .content-area :is(.page-header, .section-header, .insights-page-heading) {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  gap: 16px !important;
+  width: 100% !important;
+  min-height: 0 !important;
+  margin: 0 0 18px !important;
+  padding: 20px !important;
+  background: var(--martins-surface) !important;
+  border: 1px solid var(--martins-border) !important;
+  border-radius: var(--martins-radius) !important;
+  box-shadow: var(--martins-shadow) !important;
+}
+html body.app-body .content-area :is(.page-header, .section-header, .insights-page-heading) > div:first-child {
+  flex: 1 1 300px;
+  min-width: 0;
+}
+html body.app-body .content-area :is(.page-header, .section-header, .insights-page-heading) :is(h1, h2, p) {
+  margin: 0 !important;
+  text-align: left !important;
+}
+html body.app-body .content-area :is(.page-header, .section-header, .insights-page-heading) p {
+  margin-top: 6px !important;
+}
+html body.app-body .content-area :is(.page-header, .section-header) :is(.button-row, .quick-actions) {
+  display: flex !important;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 !important;
+}
+html body.app-body .content-area :is(.page-header, .section-header) .btn {
+  width: auto !important;
+  margin: 0 !important;
+}
+html body.app-body .content-area form.period-selector-card {
+  display: flex !important;
+  flex-flow: row nowrap !important;
+  align-items: flex-end !important;
+  justify-content: flex-start !important;
+  grid-column: 1 / -1 !important;
+  grid-row: auto !important;
+  justify-self: stretch !important;
+  gap: 12px !important;
+  width: 100% !important;
+  max-width: none !important;
+  min-height: 0 !important;
+  margin: 0 0 18px !important;
+  padding: 16px !important;
+  background: var(--martins-surface) !important;
+  border: 1px solid var(--martins-border) !important;
+  border-radius: var(--martins-radius) !important;
+  box-shadow: var(--martins-shadow) !important;
+}
+html body.app-body .content-area form.period-selector-card > :is(.row, .analytics-filter-grid) {
+  display: contents !important;
+}
+html body.app-body .content-area form.period-selector-card :is(label, .period-filter-field, [class*="col-md-"]) {
+  display: flex !important;
+  flex: 1 1 0 !important;
+  flex-direction: column !important;
+  align-items: stretch !important;
+  gap: 6px !important;
+  min-width: 0 !important;
+  width: auto !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  color: var(--martins-text) !important;
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+html body.app-body .content-area form.period-selector-card .period-filter-field > label {
+  flex: 0 0 auto !important;
+}
+html body.app-body .content-area form.period-selector-card :is(select, input:not([type="hidden"]), button, .btn) {
+  min-width: 0 !important;
+  min-height: 42px !important;
+  height: 42px !important;
+  margin: 0 !important;
+  padding: 9px 12px !important;
+  border-radius: 8px !important;
+  font-size: 14px !important;
+  line-height: 1.25 !important;
+}
+html body.app-body .content-area form.period-selector-card :is(select, input:not([type="hidden"])) {
+  width: 100% !important;
+}
+html body.app-body .content-area form.period-selector-card :is(button, .btn) {
+  flex: 0 0 auto !important;
+  width: auto !important;
+  white-space: nowrap;
+}
+html body.app-body .content-area :is(.monthly-context-card, .royalty-overview-page .branch-context-card) {
+  display: block !important;
+  min-height: 0 !important;
+}
+html body.app-body .content-area .monthly-context-main {
+  gap: 12px !important;
+  margin-bottom: 16px !important;
+}
+html body.app-body .content-area .monthly-context-main :is(h2, p) { margin: 0 !important; }
+html body.app-body .content-area .monthly-branch-control {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 12px !important;
+  align-items: center !important;
+}
+html body.app-body .content-area .monthly-branch-control > label {
+  flex: 0 1 auto;
+  width: auto !important;
+  margin: 0 !important;
+}
+html body.app-body .content-area .monthly-branch-control > select {
+  flex: 1 1 220px;
+  width: auto !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+}
+html body.app-body .content-area :is(.leaderboard-filter-card, .royalty-overview-page .branch-selector-row):has(> form.period-selector-card) {
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+html body.app-body .content-area .royalty-overview-page .branch-selector-row {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 12px !important;
+  align-items: center !important;
+}
+html body.app-body .content-area .royalty-overview-page .branch-selector-row > select {
+  flex: 1 1 240px !important;
+  width: auto !important;
+}
+html body.app-body .content-area .royalty-dashboard-grid {
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;
+}
+@media (max-width: 700px) {
+  html body.app-body .content-area form.period-selector-card {
+    flex-wrap: wrap !important;
+    padding: 12px !important;
+  }
+  html body.app-body .content-area form.period-selector-card :is(label, .period-filter-field, [class*="col-md-"]) {
+    flex: 1 1 140px !important;
+  }
+  html body.app-body .content-area form.period-selector-card .period-filter-field > label {
+    flex: 0 0 auto !important;
+  }
+}

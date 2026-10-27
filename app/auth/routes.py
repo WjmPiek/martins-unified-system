@@ -128,10 +128,8 @@ def login():
             user.ensure_protected_admin_role()
             db.session.commit()
             login_user(user)
-            flash("Welcome back.", "success")
             return redirect(default_landing_url())
 
-        flash("Invalid email or password.", "danger")
 
     return render_template("auth/login.html")
 
@@ -140,7 +138,6 @@ def login():
 @login_required
 def logout():
     logout_user()
-    flash("You have been logged out.", "info")
     return redirect(url_for("auth.login"))
 
 
