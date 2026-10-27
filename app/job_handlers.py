@@ -132,3 +132,4 @@ def run_rebuild_performance_cache_job(job: ImportJob) -> dict:
 
 
 from app import registration_alerts  # Register durable Head Office email alerts.
+from app import module_alerts  # Register subscription request email alerts.

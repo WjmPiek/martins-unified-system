@@ -81,6 +81,9 @@ def request_modules():
     application.items = [ModuleSubscriptionItem(module_code=plan.module_code, monthly_premium=plan.monthly_premium)
                          for plan in plans]
     db.session.add(application)
+    db.session.flush()
+    from app.module_alerts import queue_subscription_alert
+    queue_subscription_alert(application)
     db.session.commit()
     flash(f'Module request #{application.id} submitted for your main franchise. Monthly total: R{application.monthly_total:.2f}. Head Office will confirm payment before issuing activation codes.', 'success')
     return redirect(url_for('licensing.modules'))
