@@ -89,7 +89,7 @@ def mdb_boundaries(query, kind, release="current", today=None):
     return {"areas":areas, "limited":limited, "message":f"Official MDB {year} {kind} boundaries. " +
         ("Upcoming: effective 4 November 2026. " if year == 2026 and today < MDB_2026_EFFECTIVE else "Currently effective release. ") +
         "Municipal/ward areas are not automatic franchise rights. Population statistics must match their boundary vintage." +
-        (" Search reached 300 areas; narrow the municipality name." if limited else "") + (f" Publisher unavailable; displaying a checked copy stored {cached_at}." if cached_at else "")}
+        (" Search reached 300 areas; narrow the municipality name." if limited else "") + (f" Displaying a checked copy stored {cached_at}." if cached_at else "")}
 
 
 def query_boundaries(query=None, kind="municipality", bounds=None, main_code=None, release="current", point=None):
@@ -185,7 +185,7 @@ def query_boundaries(query=None, kind="municipality", bounds=None, main_code=Non
         areas.sort(key=lambda a: (a["name"].casefold() != wanted, a["name"]))
     return {"areas": areas, "limited": limited,
         "message": "Stats SA 2011 census polygons, shared by UCT Libraries. Confirm present-day names and franchise agreement rights." +
-        (" Discovery reached the 300-area limit; narrow the search or add suburbs by name." if limited else "") + (f" Publisher unavailable; displaying a checked copy stored {cached_at}." if cached_at else "")}
+        (" Discovery reached the 300-area limit; narrow the search or add suburbs by name." if limited else "") + (f" Displaying a checked copy stored {cached_at}." if cached_at else "")}
 
 
 def compose(parts, include_enclosed=False):

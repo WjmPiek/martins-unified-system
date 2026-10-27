@@ -3,6 +3,8 @@
 No URLs supplied by a browser are fetched. Source failure is data, not a zero.
 """
 from datetime import datetime, timezone
+from contextlib import contextmanager
+from contextvars import ContextVar
 from functools import lru_cache
 from io import BytesIO
 import gzip
@@ -32,6 +34,21 @@ SUB = "https://services3.arcgis.com/GMycIhSIBQnnjV35/arcgis/rest/services/Census
 HOSTS = {"www.statssa.gov.za", "www.sars.gov.za", "www.arcgis.com", "services7.arcgis.com", "services3.arcgis.com", "overpass-api.de", "overpass.kumi.systems", "overpass.private.coffee", "api.openstreetmap.org"}
 _cache = {}
 _cache_lock = threading.Lock()
+_interactive_deadline = ContextVar('territory_source_deadline', default=None)
+
+
+@contextmanager
+def interactive_source_budget(seconds=6):
+    """Share a short publisher budget across pagination and source fallbacks.
+
+    Context-local state keeps interactive requests separate from durable research
+    jobs. Socket reads are capped too, including the final read near the deadline.
+    """
+    token = _interactive_deadline.set(time.monotonic() + seconds)
+    try:
+        yield
+    finally:
+        _interactive_deadline.reset(token)
 
 
 def stamp():
@@ -46,6 +63,9 @@ def public_bytes(url, params=None, limit=32000000):
         if cached and time.monotonic() - cached[0] < 86400:
             return {**cached[1], "cached": True}
     deadline = time.monotonic() + 75
+    interactive_deadline = _interactive_deadline.get()
+    if interactive_deadline is not None:
+        deadline = min(deadline, interactive_deadline)
     for redirect in range(4):
         parsed = urlsplit(url)
         if parsed.scheme != "https" or parsed.hostname not in HOSTS or parsed.username or parsed.password or parsed.port:
@@ -56,7 +76,11 @@ def public_bytes(url, params=None, limit=32000000):
             raise ValueError("Only the official MDB organisation is authorised")
         if parsed.hostname == "www.arcgis.com" and not parsed.path.startswith("/sharing/rest/content/items/"):
             raise ValueError("Only fixed boundary publisher metadata is authorised")
-        with requests.get(url, params=params, stream=True, timeout=(8, 20), allow_redirects=False,
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise requests.Timeout('Boundary publisher time budget exhausted')
+        timeout = (8, 20) if interactive_deadline is None else (min(2, remaining / 2), min(3, remaining / 2))
+        with requests.get(url, params=params, stream=True, timeout=timeout, allow_redirects=False,
                           headers={"User-Agent": "MartinsUnified/1.0 public territory research"}) as response:
             if response.is_redirect:
                 url = urljoin(response.url, response.headers.get("Location", ""))
@@ -66,6 +90,8 @@ def public_bytes(url, params=None, limit=32000000):
             pieces, size = [], 0
             for chunk in response.iter_content(65536):
                 size += len(chunk)
+                if time.monotonic() > deadline and interactive_deadline is not None:
+                    raise requests.Timeout('Boundary publisher time budget exhausted')
                 if size > limit or time.monotonic() > deadline:
                     raise ValueError("Source exceeded the response/time limit")
                 pieces.append(chunk)

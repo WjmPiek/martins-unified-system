@@ -485,7 +485,12 @@ class WorkerHeartbeat(db.Model):
     def is_online(self):
         if not self.heartbeat_at:
             return False
-        return (datetime.now(timezone.utc) - self.heartbeat_at).total_seconds() < 180
+        heartbeat = self.heartbeat_at
+        # DateTime columns without timezone=True return naive UTC values after
+        # a database round trip; newly created objects can still be aware.
+        if heartbeat.tzinfo is None:
+            heartbeat = heartbeat.replace(tzinfo=timezone.utc)
+        return (datetime.now(timezone.utc) - heartbeat).total_seconds() < 180
 
 class LiveEvent(db.Model):
     __tablename__ = "live_events"

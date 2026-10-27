@@ -445,12 +445,14 @@ def territory_franchise_figures(franchise_id):
 def territory_boundaries(franchise_id):
     access(franchise_id, write=True)
     from app.franchise.territory_boundaries import query_boundaries
+    from app.franchise.territory_sources import interactive_source_budget
     try:
         body = request.get_json()
         if not isinstance(body, dict) or request.content_length is None or request.content_length > 10000:
             raise ValueError("Invalid boundary search")
-        result = query_boundaries(query=body.get("query"), kind=body.get("kind", "municipality"),
-                                  bounds=body.get("bounds"), main_code=body.get("main_code"), release=body.get("release", "current"),point=body.get('point'))
+        with interactive_source_budget():
+            result = query_boundaries(query=body.get("query"), kind=body.get("kind", "municipality"),
+                                      bounds=body.get("bounds"), main_code=body.get("main_code"), release=body.get("release", "current"),point=body.get('point'))
         return jsonify(result)
     except ValueError as exc:
         return jsonify(error=str(exc)), 400
