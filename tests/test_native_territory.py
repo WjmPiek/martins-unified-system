@@ -30,6 +30,9 @@ def app():
     app = create_app(Config)
     with app.app_context():
         db.create_all()
+        from app.models import ModulePlan, OPTIONAL_FRANCHISE_MODULES
+        db.session.add_all([ModulePlan(module_code=code, monthly_premium=Decimal('40.19')) for code in OPTIONAL_FRANCHISE_MODULES])
+        db.session.commit()
         yield app
         db.session.remove()
         db.drop_all()

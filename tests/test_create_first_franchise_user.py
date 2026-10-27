@@ -19,6 +19,9 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
     app = create_app(TestConfig)
     with app.app_context():
         db.create_all()
+        from app.models import ModulePlan, OPTIONAL_FRANCHISE_MODULES
+        from decimal import Decimal
+        db.session.add_all([ModulePlan(module_code=code, monthly_premium=Decimal('40.19')) for code in OPTIONAL_FRANCHISE_MODULES])
         admin_role = Role(name="Admin", permissions=[
             Permission(module=module,action="view",code=code,label=module)
             for module,code in [("Heat Map","heat_map:view"),("Attendance","attendance:view"),("Manuals","manuals:view")]
@@ -69,7 +72,7 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         assert manual_access.is_enabled is True
         assert owner.has_permission("manuals:view") is True
         assert owner.has_permission("heat_map:view") is True
-        assert owner.has_permission("insurance_app:view") is True
+        assert owner.has_permission("insurance_app:view") is False
         assert owner.module_trial_started_at is not None
         assert owner.assigned_franchise_id() == franchise.id
         assert owner.can_access_franchise(franchise.id)
@@ -92,7 +95,7 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         users_html = users_page.get_data(as_text=True)
         assert "yolandi@example.com" in users_html
         assert "Manuals — Compulsory" in users_html
-        assert "Insurance Applications" in users_html
+        assert "Insurance Applications" not in users_html
         assert "Manuals (Compulsory)" not in users_html
 
         activate = client.post(
@@ -112,7 +115,7 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         assert activate_insurance.status_code == 302
         db.session.expire_all()
         owner = db.session.get(User, owner.id)
-        assert owner.has_permission("insurance_app:view") is True
+        assert owner.has_permission("insurance_app:view") is False
 
         with client.session_transaction() as session:
             session["_user_id"] = str(owner.id)
@@ -122,7 +125,7 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         franchise_portal = client.get("/manuals/")
         assert franchise_portal.status_code == 200
         portal_html = franchise_portal.get_data(as_text=True)
-        assert "Insurance Applications" in portal_html
+        assert "Insurance Applications" not in portal_html
         assert "Heat Map" in portal_html
         assert "Manuals" in portal_html
         assert "Attendance" in portal_html
@@ -130,18 +133,7 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         monkeypatch.delenv("INSURANCE_APP_URL", raising=False)
         monkeypatch.setenv("INSURANCE_LAUNCH_SECRET", "test-insurance-launch-secret")
         launch = client.get("/launch/insurance")
-        assert launch.status_code == 302
-        destination = urlparse(launch.headers["Location"])
-        assert destination.scheme == "https"
-        assert destination.netloc == "insurance.martinssystem.co.za"
-        assert destination.path == "/auth/launch"
-        token = parse_qs(destination.query)["token"][0]
-        payload = URLSafeTimedSerializer(
-            "test-insurance-launch-secret", salt="martins-insurance-launch-v1"
-        ).loads(token, max_age=120)
-        assert payload["module"] == "insurance"
-        assert payload["email"] == "yolandi@example.com"
-        assert payload["franchises"] == ["Panorama"]
+        assert launch.status_code == 403
 
         with client.session_transaction() as session:
             session["_user_id"] = str(admin.id)
@@ -150,7 +142,7 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         assert client.get('/admin/module-activations').status_code == 200
         with client.session_transaction() as session:
             csrf = session['registration_csrf']
-        for module in ('heat_map:view','attendance:view','insurance_app:view'):
+        for module in ('heat_map:view','attendance:view'):
             deactivate_optional = client.post('/admin/module-activations', data={
                 'user_id':owner.id,'module_code':module,'action':'deactivate','csrf_token':csrf})
             assert deactivate_optional.status_code == 302

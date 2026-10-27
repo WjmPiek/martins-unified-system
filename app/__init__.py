@@ -122,6 +122,7 @@ def create_app(config_class=Config):
     from app.registration import registration_bp
     app.register_blueprint(registration_bp)
     from app.module_licensing import licensing_bp
+    from app import module_catalog  # Register catalogue selection routes before the blueprint.
     app.register_blueprint(licensing_bp)
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
