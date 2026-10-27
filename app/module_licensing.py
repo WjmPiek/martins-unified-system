@@ -108,7 +108,15 @@ def modules():
 def manage():
     if not current_user.is_admin_user():
         abort(403)
-    generated = None
+    from app.models import UserAccessProfile, Franchise
+    from app.activation_delivery import registered_recipients, seal, reveal, send_code_email
+    from app.module_catalog import pending_item, admin_catalog_context
+    from app.audit import log_action
+    search = (request.values.get('q') or '').strip()[:120]
+
+    def back(user_id, module_code):
+        return redirect(url_for('licensing.manage', user_id=user_id, module_code=module_code, q=search or None, _anchor=f'holder-{user_id}'))
+
     if request.method == 'POST':
         check_csrf()
         if request.form.get('action') == 'set_price':
@@ -116,24 +124,49 @@ def manage():
             return update_price()
         user = User.query.filter_by(id=request.form.get('user_id', type=int)).with_for_update().first_or_404()
         code = request.form.get('module_code')
-        if not user.has_role('Franchise User') or user.is_admin_user() or code not in MODULES:
+        has_profile = UserAccessProfile.query.filter_by(principal_user_id=user.id, is_active=True).first() is not None
+        if ((not user.has_role('Franchise User') or user.is_admin_user()) and not has_profile) or code not in MODULES:
             abort(400)
         action = request.form.get('action')
         if action == 'issue':
             if not user.is_active_account or not user.is_active or request.form.get('payment_confirmed') != 'yes':
                 flash('Confirm payment and make sure the franchise account is active before issuing a code.', 'danger')
                 return redirect(url_for('licensing.manage'))
-            raw = secrets.token_hex(16).upper()
-            generated = '-'.join(raw[i:i+8] for i in range(0,32,8))
-            from app.module_catalog import pending_item
             item = pending_item(user.id, code)
+            options = registered_recipients(user, item)
+            recipient = (request.form.get('recipient_email') or '').strip().lower()
+            if not recipient:
+                recipient = next((option['email'] for option in options if option['preferred']), '')
+            if not recipient or recipient not in {option['email'] for option in options}:
+                flash('Select the correct registered holder email before issuing the code.', 'danger')
+                return back(user.id, code)
+            raw = secrets.token_hex(16).upper()
+            value = '-'.join(raw[i:i+8] for i in range(0,32,8))
+            # Reissuing replaces unredeemed codes; an old email cannot undo a
+            # cancellation or activate a different holder/module.
+            for previous in ModuleActivationCode.query.filter_by(user_id=user.id, module_code=code, redeemed_at=None, revoked_at=None).with_for_update().all():
+                previous.revoked_at = now()
             if item:
                 item.status = 'code_issued'
-            db.session.add(ModuleActivationCode(user_id=user.id, module_code=code, code_hash=fingerprint(generated),
+            issued = ModuleActivationCode(user_id=user.id, module_code=code, code_hash=fingerprint(value), encrypted_code=seal(value), recipient_email=recipient,
                                                issued_by_id=current_user.id, payment_reference=request.form.get('payment_reference','').strip()[:160],
-                                               request_item=item))
+                                               request_item=item)
+            db.session.add(issued)
+            log_action('Modules', 'Issued activation code', f'Holder #{user.id}; module {code}; recipient {recipient}')
             db.session.commit()
-            generated = {'value':generated, 'email':user.email, 'module':MODULES[code]}
+            sent = send_code_email(issued, user)
+            flash(f'Code created and emailed to {recipient}.' if sent else 'Code created and saved under the holder. Email was not sent; use Retry email after checking the recipient and mail settings.', 'success' if sent else 'warning')
+            return back(user.id, code)
+        elif action == 'send_email':
+            issued = ModuleActivationCode.query.filter_by(id=request.form.get('code_id', type=int), user_id=user.id, module_code=code).first_or_404()
+            if not reveal(issued) or issued.redeemed_at or issued.revoked_at:
+                flash('This code is unavailable, already activated or cancelled. Issue a new code if needed.', 'warning')
+                return back(user.id, code)
+            sent = send_code_email(issued, user)
+            log_action('Modules', 'Activation email retry', f'Code record #{issued.id}; holder #{user.id}; sent={sent}')
+            db.session.commit()
+            flash(f'Activation code emailed to {issued.recipient_email}.' if sent else 'Email was not sent. Check the holder access and mail settings, then retry.', 'success' if sent else 'warning')
+            return back(user.id, code)
         elif action == 'deactivate':
             from app.models import ModuleSubscriptionItem, ModuleSubscriptionRequest
             for selection in ModuleSubscriptionItem.query.join(ModuleSubscriptionRequest).filter(
@@ -150,16 +183,33 @@ def manage():
                 item.revoked_at = now()
             db.session.commit()
             flash(f'{MODULES[code]} deactivated for {user.full_name}.', 'success')
-            return redirect(url_for('licensing.manage'))
+            return back(user.id, code)
         else:
             abort(400)
-    from app.models import UserAccessProfile
     profile_owners = db.select(UserAccessProfile.principal_user_id).where(UserAccessProfile.is_active.is_(True))
-    owners = User.query.outerjoin(User.roles).filter(db.or_(Role.name == 'Franchise User', User.id.in_(profile_owners))).distinct().order_by(User.name,User.surname).all()
-    from app.module_catalog import admin_catalog_context
-    response = render_template('modules/manage.html', modules=MODULES, owners=owners, generated=generated,
+    query = User.query.outerjoin(User.roles).filter(db.or_(Role.name == 'Franchise User', User.id.in_(profile_owners)))
+    if search:
+        from sqlalchemy.orm import aliased
+        identity = aliased(User)
+        pattern = '%' + search.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_') + '%'
+        linked = db.select(UserAccessProfile.principal_user_id).join(identity, identity.id == UserAccessProfile.identity_user_id).where(
+            UserAccessProfile.is_active.is_(True), db.or_(identity.email.ilike(pattern, escape='\\'),
+                (identity.name + ' ' + identity.surname).ilike(pattern, escape='\\')))
+        query = query.filter(db.or_(User.email.ilike(pattern, escape='\\'),
+            (User.name + ' ' + User.surname).ilike(pattern, escape='\\'), User.id.in_(linked),
+            User.assigned_franchises.any(db.or_(Franchise.business_name.ilike(pattern, escape='\\'), Franchise.franchise_code.ilike(pattern, escape='\\'))),
+            User.id.in_(db.select(UserAccessProfile.principal_user_id).join(Franchise, Franchise.id == UserAccessProfile.franchise_id).where(
+                UserAccessProfile.is_active.is_(True), Franchise.business_name.ilike(pattern, escape='\\')))))
+    owners = query.distinct().order_by(User.name, User.surname).all()
+    latest_codes = {}
+    for issued in ModuleActivationCode.query.filter(ModuleActivationCode.user_id.in_([owner.id for owner in owners])).order_by(ModuleActivationCode.issued_at.desc(), ModuleActivationCode.id.desc()).all():
+        latest_codes.setdefault((issued.user_id, issued.module_code), issued)
+    recipients = {str(owner.id): {code: registered_recipients(owner, pending_item(owner.id, code, lock=False)) for code in MODULES} for owner in owners}
+    response = render_template('modules/manage.html', modules=MODULES, owners=owners, search=search,
+                               latest_codes=latest_codes, reveal_code=reveal, recipient_options=recipients,
                                selected_owner_id=request.args.get('user_id', type=int), selected_module_code=request.args.get('module_code'),
-                               module_active=module_active, registration_csrf=csrf_token(), utc=utc, now=now(), **admin_catalog_context())
+                               module_active=module_active, registration_csrf=csrf_token(), utc=utc, now=now(),
+                               **admin_catalog_context([owner.id for owner in owners] if search else None))
     return response, 200, {'Cache-Control':'no-store', 'Referrer-Policy':'same-origin'}
 
 

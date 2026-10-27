@@ -36,8 +36,9 @@ def admin_client(app):
 
 
 def issue(client,user,module='heat_map:view',confirmed='yes'):
-    return client.post('/admin/module-activations',data={'csrf_token':token(client,'/admin/module-activations'),
+    response = client.post('/admin/module-activations',data={'csrf_token':token(client,'/admin/module-activations'),
         'user_id':user.id,'module_code':module,'action':'issue','payment_confirmed':confirmed})
+    return client.get(response.location) if confirmed == 'yes' and response.status_code == 302 else response
 
 
 def test_trial_expiry_blocks_routes_keeps_manuals_and_cannot_restart(app,franchise):
