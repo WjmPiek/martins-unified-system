@@ -105,7 +105,7 @@ class User(UserMixin, db.Model):
 
     @property
     def is_protected_admin(self):
-        return self.email.lower() == "wjm@martinsdirect.com" or self.full_name.lower() == "wjm piek"
+        return self.email.lower() == "wjm@martinsdirect.com"
 
     def ensure_protected_admin_role(self):
         if not self.is_protected_admin:
@@ -197,6 +197,23 @@ class User(UserMixin, db.Model):
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
+
+
+class FranchiseRegistration(db.Model):
+    __tablename__ = 'franchise_registrations'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(120), nullable=False)
+    surname = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(255), nullable=False, unique=True)
+    business_name = db.Column(db.String(120), nullable=False)
+    phone = db.Column(db.String(120), nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='pending', index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    reviewed_at = db.Column(db.DateTime)
+    reviewed_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    review_note = db.Column(db.Text, nullable=False, default='')
 
 
 class UserModuleAccess(db.Model):

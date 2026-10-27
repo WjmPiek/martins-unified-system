@@ -1,0 +1,8 @@
+{% extends "base.html" %}
+{% block auth_content %}
+<section class="card narrow"><h1>Application received</h1>
+<p>Your registration is waiting for Head Office review. You cannot log in until it has been approved.</p>
+<ol><li>Head Office verifies your contact details and authority to access the franchise.</li><li>They link your account to the correct franchise and approve access.</li><li>You will receive an email update, or Head Office will contact you directly if email delivery is unavailable.</li><li>Once approved, log in with your email and the password you chose.</li></ol>
+<p>For an update or to correct your details, contact Head Office. Please do not submit another application.</p>
+<a class="btn" href="{{ url_for('auth.login') }}">Back to Login</a></section>
+{% endblock %}
