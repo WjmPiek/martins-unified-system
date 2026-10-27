@@ -55,7 +55,9 @@
                         <span class="ms-brand-copy"><strong class="ms-brand-title">Martin's Funerals</strong><small class="ms-brand-module">{{ 'Heatmap' if request.path.startswith('/heat-map') else ('Attendance Register' if request.path.startswith('/attendance') else ('Claims' if request.path.startswith('/insurance-claims') else 'Business Overview')) }}</small></span>
                     </a>
 
-                    {% if current_user.has_role('Franchise User') %}<div class="nav-primary-link"><a href="{{ url_for('licensing.modules') }}"><span class="nav-icon">M</span><span><strong>My Modules</strong><small>Trial status &amp; activation codes</small></span></a></div>{% endif %}
+                    {% if pure_franchise_portal %}
+                    <div class="franchise-context-card"><small>Your franchise</small><strong>{{ selected_franchise.business_name if selected_franchise else 'My Business' }}</strong></div>
+                    {% endif %}
                     {% if territory_owner_access %}
                     <div class="nav-primary-link">
                         <a href="{{ url_for('franchise.territory_index') }}"><span class="nav-icon">T</span><span><strong>Territory &amp; Valuation</strong><small>Franchise territory planning</small></span></a>
@@ -64,14 +66,9 @@
 
                     {# Franchise users share the main UI but only see their scoped core and activated modules. #}
                     {% if pure_franchise_portal %}
-                        <div class="franchise-context-card"><small>Your franchise</small><strong>{{ selected_franchise.business_name if selected_franchise else 'My Business' }}</strong></div>
-
                         <div class="mobile-franchise-menu" aria-label="Franchise mobile menu">
                             {% if current_user.has_permission('performance:view') %}<a href="{{ url_for('performance.graphs') }}"><span>◒</span><strong>Performance Graph</strong></a><a href="{{ url_for('performance.index') }}"><span>#</span><strong>Leaderboard</strong></a>{% endif %}
                             {% if current_user.has_permission('royalties:view') %}<a href="{{ url_for('royalties.index') }}"><span>R</span><strong>Royalty</strong></a>{% endif %}
-                            {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}"><span>◎</span><strong>Heat Map</strong></a>{% endif %}
-                            {% if current_user.has_permission('insurance_app:view') %}<a href="{{ url_for('insurance_launch.launch') }}"><span>I</span><strong>Insurance Applications</strong></a>{% endif %}
-                            {% if current_user.has_permission('manuals:view') %}<a href="{{ url_for('manuals.index') }}"><span>≡</span><strong>Manuals</strong></a>{% endif %}
                         </div>
 
                         <details class="nav-section nav-domain" open><summary><span class="nav-icon">G</span><span><strong>Graphs &amp; Analytics</strong><small>Your performance and position</small></span></summary><div class="nav-subtabs">
@@ -88,8 +85,9 @@
                             <a href="{{ url_for('franchise.employees') }}">Employees <small>Your franchise team</small></a>
                         </div></details>
 
-                        {% if current_user.has_permission('heat_map:view') or current_user.has_permission('attendance:view') or current_user.has_permission('insurance_app:view') or current_user.has_permission('manuals:view') %}
-                        <details class="nav-section nav-domain" open><summary><span class="nav-icon">A</span><span><strong>Activated Modules</strong><small>Additional franchise tools</small></span></summary><div class="nav-subtabs">
+                        {% if current_user.has_role('Franchise User') or current_user.has_permission('heat_map:view') or current_user.has_permission('attendance:view') or current_user.has_permission('insurance_app:view') or current_user.has_permission('manuals:view') %}
+                        <details class="nav-section nav-domain nav-modules" open><summary><span class="nav-icon">A</span><span><strong>Activated Modules</strong><small>Subscriptions &amp; franchise tools</small></span></summary><div class="nav-subtabs">
+                            {% if current_user.has_role('Franchise User') %}<a href="{{ url_for('licensing.modules') }}">Subscriptions <small>Plans, trials &amp; activation codes</small></a>{% endif %}
                             {% if current_user.has_permission('heat_map:view') %}<a href="{{ url_for('heatmap.index') }}">Heat Map <small>View franchise coverage and density</small></a>{% endif %}
                             {% if current_user.has_permission('attendance:view') %}<a href="{{ url_for('attendance_launch.launch') }}">Attendance <small>Staff attendance workspace</small></a>{% endif %}
                             {% if current_user.has_permission('insurance_app:view') %}<a href="{{ url_for('insurance_launch.launch') }}">Insurance Applications <small>Open the online application system</small></a>{% endif %}

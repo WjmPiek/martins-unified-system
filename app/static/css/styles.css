@@ -3927,9 +3927,12 @@ td input, td select, td textarea {
 
 @media (max-width: 899px) {
   body.franchise-user-portal .sidebar-nav > .nav-section,
-  body.franchise-user-portal .sidebar-nav > .nav-utility-links,
-  body.franchise-user-portal .franchise-context-card {
+  body.franchise-user-portal .sidebar-nav > .nav-utility-links {
     display: none !important;
+  }
+
+  body.franchise-user-portal .sidebar-nav > .nav-section.nav-modules {
+    display: block !important;
   }
 
   body.franchise-user-portal .sidebar-logo {
