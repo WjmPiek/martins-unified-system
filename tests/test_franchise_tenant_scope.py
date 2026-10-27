@@ -125,6 +125,12 @@ def test_grouped_main_franchise_user_keeps_one_primary_and_can_log_in():
             "/login",
             data={"email": "centurion@martinsdirect.com", "password": "secure-password"},
         )
+        assert response.status_code == 200
+        assert 'Centurion' in response.text and 'Grouped Branch' in response.text
+        with client.session_transaction() as session:
+            assert '_user_id' not in session
+            token = session['profile_login']['token']
+        response = client.post('/login', data={'profile_key': f'own:{centurion.id}', 'csrf_token': token})
         assert response.status_code == 302
         with client.session_transaction() as session:
             assert session.get("_user_id") == str(owner.id)

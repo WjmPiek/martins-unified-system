@@ -312,6 +312,8 @@
                         <span>Logged in as</span>
                         <strong>{{ current_user.full_name }}</strong>
                         <small>{{ current_user.roles|map(attribute='name')|join(', ') or 'No Role' }}</small>
+                        {% if current_user.profile_label is defined %}<span>{{ current_user.profile_label }}</span>{% endif %}
+                        <a class="logout-link secondary-link" href="{{ url_for('auth.profiles') }}">Switch profile</a>
                         {% if privileged_user and franchise_view_mode %}
                             <a class="logout-link secondary-link" href="{{ url_for('dashboard.main_dashboard') }}">Main Dashboard</a>
                         {% endif %}

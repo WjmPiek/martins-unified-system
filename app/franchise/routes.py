@@ -498,7 +498,7 @@ def user_is_my_franchise_employee(user):
     if not user:
         return False
     if user.parent_franchise_user_id == current_user.id:
-        return True
+        return any(branch.id == current_user.assigned_franchise_id() for branch in user.assigned_franchises) if getattr(current_user, 'profile_franchise', None) else True
     # Safe fallback for older records: employee must be linked only to franchises the owner can access.
     my_franchise_ids = {franchise.id for franchise in franchises_available_for_employee_creation()}
     employee_franchise_ids = {franchise.id for franchise in (user.assigned_franchises or [])}

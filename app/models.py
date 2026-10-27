@@ -201,15 +201,50 @@ class User(UserMixin, db.Model):
 
 @login_manager.user_loader
 def load_user(user_id):
-    return User.query.get(int(user_id))
+    from app.access_profiles import session_user
+    try:
+        user = db.session.get(User, int(user_id))
+    except (TypeError, ValueError):
+        return None
+    return session_user(user) if user else None
+
+
+class UserAccessProfile(db.Model):
+    """An explicitly approved branch profile under an existing sign-in.
+
+    The original owner record keeps its billing group, modules and history.
+    Linking a sign-in never changes either account's password or roles.
+    """
+    __tablename__ = 'user_access_profiles'
+    __table_args__ = (db.UniqueConstraint('identity_user_id', 'franchise_id', name='uq_identity_franchise_profile'),)
+    id = db.Column(db.Integer, primary_key=True)
+    identity_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    principal_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey('franchises.id'), nullable=False, index=True)
+    is_active = db.Column(db.Boolean, nullable=False, default=True)
+    created_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    identity = db.relationship('User', foreign_keys=[identity_user_id])
+    principal = db.relationship('User', foreign_keys=[principal_user_id])
+    franchise = db.relationship('Franchise')
+
+
+class FranchiseRetirementBackup(db.Model):
+    __tablename__ = 'franchise_retirement_backups'
+    id = db.Column(db.Integer, primary_key=True)
+    original_franchise_id = db.Column(db.Integer, nullable=False)
+    reason = db.Column(db.String(255), nullable=False)
+    snapshot_json = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, server_default=db.func.now())
 
 
 class FranchiseRegistration(db.Model):
     __tablename__ = 'franchise_registrations'
+    __table_args__ = (db.UniqueConstraint('email', 'business_name', name='uq_registration_email_business'),)
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
     surname = db.Column(db.String(120), nullable=False)
-    email = db.Column(db.String(255), nullable=False, unique=True)
+    email = db.Column(db.String(255), nullable=False)
     business_name = db.Column(db.String(120), nullable=False)
     phone = db.Column(db.String(120), nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)

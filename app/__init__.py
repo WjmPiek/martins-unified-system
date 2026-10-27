@@ -125,6 +125,24 @@ def create_app(config_class=Config):
     from app import module_catalog  # Register catalogue selection routes before the blueprint.
     app.register_blueprint(licensing_bp)
     app.register_blueprint(auth_bp)
+    from app.profile_admin import profiles_admin_bp
+    app.register_blueprint(profiles_admin_bp)
+
+    @app.before_request
+    def keep_franchise_profiles_out_of_head_office():
+        from flask import abort
+        from flask_login import current_user
+        if request.blueprint in ('admin', 'profile_admin') and getattr(current_user, 'profile_franchise', None):
+            abort(403)
+
+    @app.after_request
+    def prevent_profile_cache_reuse(response):
+        from flask_login import current_user
+        if not request.path.startswith('/static/') and current_user.is_authenticated:
+            if 'no-store' not in response.headers.get('Cache-Control', ''):
+                response.headers['Cache-Control'] = 'private, no-store'
+            response.vary.add('Cookie')
+        return response
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(franchise_bp)

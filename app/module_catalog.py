@@ -63,7 +63,7 @@ def request_modules():
         abort(403)
     check_csrf()
     owner = User.query.filter_by(id=current_user.id).with_for_update().one()
-    franchise_id = owner.assigned_franchise_id()
+    franchise_id = current_user.assigned_franchise_id()
     if not franchise_id or not owner.is_active or not owner.is_active_account:
         abort(409, 'Head Office must link and activate your main franchise account first.')
     selected = set(request.form.getlist('module_codes'))

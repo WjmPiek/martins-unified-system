@@ -94,6 +94,8 @@ def current_user_role_names():
     account as Admin and read legacy single-role fields when present.
     """
     names = {role.name for role in getattr(current_user, "roles", []) or [] if getattr(role, "name", None)}
+    if current_user.is_franchise_scoped_user():
+        return names
 
     for attr in ("role", "role_name", "user_role", "primary_role_name"):
         value = getattr(current_user, attr, None)

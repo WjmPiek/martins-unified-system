@@ -5,6 +5,7 @@
     <p><strong>Email:</strong> {{ user.email }}</p>
     <p><strong>Roles:</strong> {{ user.roles|map(attribute='name')|join(', ') }}</p>
     <p><strong>Status:</strong> {% if user.is_active %}Active{% else %}Inactive{% endif %}</p>
+    {% if current_user.is_admin_user() %}<p><a class="btn secondary" href="{{ url_for('profile_admin.manage', user_id=user.id) }}">Manage access profiles</a></p>{% endif %}
     <p><strong>Linked Franchises:</strong> {% if user.assigned_franchises %}{{ user.assigned_franchises|map(attribute='business_name')|join(', ') }}{% else %}None{% endif %}</p>
     <div class="modal-actions"><button type="button" class="btn secondary button-auto" onclick="closeUserModal('view-user-{{ user.id }}')">Close</button></div>
   </div>

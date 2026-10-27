@@ -1,4 +1,5 @@
 from io import BytesIO
+from datetime import datetime, timezone
 from pathlib import Path
 
 from flask_login import login_user, logout_user
@@ -251,7 +252,7 @@ def test_franchise_user_import_is_immediately_visible_in_own_heatmap_data():
             .values(is_primary=True)
         )
         db.session.add(UserModuleAccess(
-            user_id=owner.id, module_code="heat_map:view", is_enabled=True
+            user_id=owner.id, module_code="heat_map:view", is_enabled=True, paid_activated_at=datetime.now(timezone.utc)
         ))
         db.session.commit()
 
@@ -394,7 +395,7 @@ def test_franchise_user_can_save_automatic_coordinates_for_own_records_only():
             .values(is_primary=True)
         )
         db.session.add(UserModuleAccess(
-            user_id=owner.id, module_code="heat_map:view", is_enabled=True
+            user_id=owner.id, module_code="heat_map:view", is_enabled=True, paid_activated_at=datetime.now(timezone.utc)
         ))
         db.session.commit()
 
