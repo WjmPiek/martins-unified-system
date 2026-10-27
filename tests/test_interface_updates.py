@@ -81,3 +81,23 @@ def test_missing_year_is_neutral_and_overall_normalizes_different_units():
 def test_all_templates_compile(app):
     for name in app.jinja_env.list_templates():
         app.jinja_env.get_template(name)
+
+
+@pytest.mark.parametrize('path', ['/login', '/royalties/', '/platform/theme.css'])
+def test_existing_session_auth_notices_are_discarded_on_every_page(app, franchise, path):
+    client = login(app, franchise)
+    with client.session_transaction() as session:
+        session['_flashes'] = [
+            ('info', 'You have been logged out.'),
+            ('success', 'Welcome back, Belfast (F) User.'),
+            ('danger', 'Invalid email or password.'),
+            ('warning', 'Please log in to access this page.'),
+            ('success', 'Royalty record saved.'),
+        ]
+    response = client.get(path)
+    assert 'You have been logged out.' not in response.text
+    with client.session_transaction() as session:
+        remaining = session.get('_flashes', [])
+        assert all(message == 'Royalty record saved.' for category, message in remaining)
+        if path == '/platform/theme.css':
+            assert remaining == [('success', 'Royalty record saved.')]

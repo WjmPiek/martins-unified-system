@@ -13,6 +13,30 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    @app.before_request
+    def discard_legacy_auth_notifications():
+        from flask import session
+        # Clear notices saved in session cookies by older releases before any
+        # page or module consumes the shared flash queue.
+        pending = session.get("_flashes", [])
+        if not pending:
+            return
+
+        def is_auth_notice(message):
+            text = str(message).strip().casefold().rstrip(".! ")
+            return text in {
+                "you have been logged out", "you have been logged in",
+                "invalid email or password", "please log in to access this page",
+                "welcome back",
+            } or text.startswith("welcome back,")
+
+        remaining = [(category, message) for category, message in pending if not is_auth_notice(message)]
+        if len(remaining) != len(pending):
+            if remaining:
+                session["_flashes"] = remaining
+            else:
+                session.pop("_flashes", None)
+
     # Long-lived browser cache for static assets. This keeps the Martins logo, CSS and JS
     # in the browser cache instead of refetching/reflashing them on every page change.
     app.config.setdefault("SEND_FILE_MAX_AGE_DEFAULT", 31536000)
