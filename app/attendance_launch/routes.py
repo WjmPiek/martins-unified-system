@@ -81,6 +81,7 @@ def launch():
         {
             "module": "attendance",
             "email": current_user.email,
+            "user_id": current_user.id,
             "name": _display_name(),
             "is_admin": _is_attendance_admin(),
             "roles": sorted(str(role.name) for role in current_user.roles),

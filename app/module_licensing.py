@@ -175,7 +175,14 @@ def check_external_access():
         abort(403)
     if signed.get('module') != module or not signed.get('email'):
         abort(403)
-    user = User.query.filter(db.func.lower(User.email) == str(signed['email']).strip().lower()).first()
+    identities = User.query.filter(db.func.lower(User.email) == str(signed['email']).strip().lower())
+    if signed.get('user_id'):
+        user = identities.filter(User.id == signed['user_id']).first()
+    else:
+        # Legacy external modules identify by email. Ambiguous identities must
+        # not inherit the first matching franchise's paid entitlement.
+        matches = identities.all()
+        user = matches[0] if len(matches) == 1 else None
     # Unknown identities must not be granted an entitlement by this endpoint.
     active = bool(user and user.is_active and user.is_active_account and user.has_permission(module))
     expires = None

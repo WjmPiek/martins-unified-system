@@ -1,4 +1,6 @@
-from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app
+from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session
+import secrets
+import time
 from flask_login import login_user, logout_user, login_required, current_user
 from flask_mail import Message
 from app.extensions import db, mail
@@ -26,7 +28,10 @@ def send_password_reset_email(user):
     token = user.get_reset_token()
     reset_url = url_for("auth.reset_password", token=token, _external=True)
     subject = "Reset your password"
+    franchises = ", ".join(item.business_name for item in user.accessible_franchises()) if user.is_franchise_scoped_user() else "Head Office"
     body = f"""Hello {user.name},
+
+Account: {user.full_name} — {franchises}
 
 A password reset was requested for your account.
 
@@ -65,26 +70,60 @@ def login():
     if current_user.is_authenticated:
         return redirect(default_landing_url())
 
-    if request.method == "POST":
+    error = None
+    if request.method == "POST" and request.form.get("account_id"):
+        pending = session.pop("login_accounts", {})
+        account_id = request.form.get("account_id", type=int)
+        if (time.time() - pending.get("created", 0) < 300
+                and secrets.compare_digest(request.form.get("choice_token", ""), pending.get("token", ""))
+                and pending.get("token")):
+            for item in pending.get("accounts", []):
+                if item["id"] == account_id:
+                    user = db.session.get(User, account_id)
+                    if (user and user.is_active and user.is_active_account
+                            and user.updated_at.isoformat() == item["updated"]
+                            and (item["verified"] or user.check_password(request.form.get("password", "")))):
+                        return complete_login(user)
+        error = "Your account selection expired or is invalid. Please log in again."
+    elif request.method == "POST":
+        session.pop("login_accounts", None)
         email = request.form.get("email", "").strip().lower()
         password = request.form.get("password", "")
-        user = User.query.filter_by(email=email).first()
+        candidates = User.query.filter(db.func.lower(User.email) == email,
+            User.is_active.is_(True), User.is_active_account.is_(True)).order_by(User.id).all()
+        accounts = [user for user in candidates if user.check_password(password)]
+        if len(accounts) == 1 and len(candidates) == 1:
+            return complete_login(accounts[0])
+        if accounts:
+            token = secrets.token_urlsafe(32)
+            session["login_accounts"] = {"created": time.time(), "token": token,
+                "accounts": [{"id": user.id, "updated": user.updated_at.isoformat(), "verified": user in accounts} for user in candidates]}
+            return render_template("auth/choose_account.html", accounts=candidates, choice_token=token), 200, {"Cache-Control": "no-store"}
+        error = "Unable to log in. Check your email and password, or contact Head Office."
+    else:
+        session.pop("login_accounts", None)
+    return render_template("auth/login.html", error=error), 200, {"Cache-Control": "no-store"}
 
-        if user and user.check_password(password) and user.is_active_account:
-            user.last_login_at = datetime.now(timezone.utc)
-            user.ensure_protected_admin_role()
-            db.session.commit()
-            login_user(user)
-            return redirect(default_landing_url())
 
-
-    return render_template("auth/login.html")
+def complete_login(user):
+    # A previous account's franchise context must never follow a new login.
+    session.pop("selected_franchise_id", None)
+    session.pop("franchise_view_mode", None)
+    session.pop("login_accounts", None)
+    user.last_login_at = datetime.now(timezone.utc)
+    user.ensure_protected_admin_role()
+    db.session.commit()
+    login_user(user)
+    return redirect(default_landing_url())
 
 
 @auth_bp.route("/logout")
 @login_required
 def logout():
     logout_user()
+    session.pop("selected_franchise_id", None)
+    session.pop("franchise_view_mode", None)
+    session.pop("login_accounts", None)
     return redirect(url_for("auth.login"))
 
 
@@ -95,16 +134,15 @@ def forgot_password():
 
     if request.method == "POST":
         email = request.form.get("email", "").strip().lower()
-        user = User.query.filter_by(email=email).first()
+        users = User.query.filter(db.func.lower(User.email) == email, User.is_active.is_(True), User.is_active_account.is_(True)).all()
 
-        if user:
-            sent, debug_url = send_password_reset_email(user)
+        if users:
+            results = [send_password_reset_email(user) for user in users]
+            sent = all(result[0] for result in results)
             if sent:
                 flash("Password reset instructions have been sent to your email.", "success")
             else:
                 flash("Email sending is not configured yet. In development, check the terminal for the reset link.", "warning")
-                if debug_url:
-                    flash(f"Development reset link: {debug_url}", "info")
         else:
             flash("If that email exists, reset instructions will be sent.", "info")
 

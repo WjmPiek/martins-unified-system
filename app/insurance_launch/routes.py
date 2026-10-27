@@ -70,6 +70,7 @@ def launch():
         {
             "module": "insurance",
             "email": current_user.email,
+            "user_id": current_user.id,
             "name": _display_name(),
             "is_admin": _is_admin(),
             "franchises": franchises,

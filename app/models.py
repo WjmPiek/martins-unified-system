@@ -68,7 +68,7 @@ class User(UserMixin, db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
     surname = db.Column(db.String(120), nullable=False)
-    email = db.Column(db.String(255), unique=True, nullable=False, index=True)
+    email = db.Column(db.String(255), nullable=False, index=True)
     password_hash = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     is_active_account = db.Column(db.Boolean, nullable=False, default=True)
@@ -188,16 +188,20 @@ class User(UserMixin, db.Model):
 
     def get_reset_token(self):
         serializer = URLSafeTimedSerializer(current_app.config["SECRET_KEY"])
-        return serializer.dumps(self.email, salt="password-reset-salt")
+        return serializer.dumps({"user_id": self.id, "email": self.email}, salt="password-reset-salt")
 
     @staticmethod
     def verify_reset_token(token, max_age=1800):
         serializer = URLSafeTimedSerializer(current_app.config["SECRET_KEY"])
         try:
-            email = serializer.loads(token, salt="password-reset-salt", max_age=max_age)
+            identity = serializer.loads(token, salt="password-reset-salt", max_age=max_age)
         except (BadSignature, SignatureExpired):
             return None
-        return User.query.filter_by(email=email).first()
+        if isinstance(identity, dict):
+            return User.query.filter_by(id=identity.get("user_id"), email=identity.get("email")).first()
+        # Legacy links remain valid only when the email identifies one account.
+        users = User.query.filter_by(email=identity).all()
+        return users[0] if len(users) == 1 else None
 
 @login_manager.user_loader
 def load_user(user_id):
@@ -206,10 +210,11 @@ def load_user(user_id):
 
 class FranchiseRegistration(db.Model):
     __tablename__ = 'franchise_registrations'
+    __table_args__ = (db.UniqueConstraint('email', 'business_name', name='uq_registration_email_business'),)
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(120), nullable=False)
     surname = db.Column(db.String(120), nullable=False)
-    email = db.Column(db.String(255), nullable=False, unique=True)
+    email = db.Column(db.String(255), nullable=False)
     business_name = db.Column(db.String(120), nullable=False)
     phone = db.Column(db.String(120), nullable=False)
     password_hash = db.Column(db.String(255), nullable=False)

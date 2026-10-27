@@ -81,8 +81,11 @@ def submit_registration():
             error = 'This email is already registered. Please use Log in or Forgot password.'
         if not error:
             existing = User.query.filter(db.func.lower(User.email) == fields['email']).first()
-            application = FranchiseRegistration.query.filter_by(email=fields['email']).first()
-            if existing or application:
+            from app.account_identity import can_share_owner_email
+            application = FranchiseRegistration.query.filter(
+                db.func.lower(FranchiseRegistration.email) == fields['email'],
+                db.func.lower(FranchiseRegistration.business_name) == fields['business_name'].lower()).first()
+            if (existing and not can_share_owner_email(fields['email'])) or application:
                 error = 'This email already has an account or application. Contact Head Office for help, or use Log in / Forgot password if already approved.'
             else:
                 application = FranchiseRegistration(**fields, password_hash=generate_password_hash(password))
@@ -139,7 +142,8 @@ def review(application_id):
         flash('Verify the applicant and franchise ownership before reviewing.', 'danger')
         return redirect(url_for('registration.applications'))
     if action == 'approve':
-        if User.query.filter(db.func.lower(User.email) == application.email).first():
+        from app.account_identity import can_share_owner_email
+        if not can_share_owner_email(application.email):
             flash('An account already uses this email. Resolve the existing account before approval.', 'danger')
             return redirect(url_for('registration.applications'))
         franchise_id = request.form.get('franchise_id', '')
@@ -171,6 +175,10 @@ def review(application_id):
                 return redirect(url_for('registration.applications'))
         # Lock the franchise as well: two applications must not claim one owner slot.
         db.session.query(Franchise).filter_by(id=franchise.id).with_for_update().one()
+        if not can_share_owner_email(application.email, franchise.id):
+            db.session.rollback()
+            flash('This email already has an account for that franchise. Reactivate or edit the existing account.', 'danger')
+            return redirect(url_for('registration.applications'))
         owners = [u for u in franchise.assigned_users if u.has_role('Franchise User') and u.is_active_account]
         if owners:
             db.session.rollback()
