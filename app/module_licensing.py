@@ -13,7 +13,8 @@ from app.models import User, Role, UserModuleAccess, ModuleActivationCode, OPTIO
 from app.registration import csrf_token, check_csrf
 
 licensing_bp = Blueprint('licensing', __name__)
-MODULES = {'heat_map:view':'Heat Map', 'attendance:view':'Attendance', 'insurance_app:view':'Insurance Applications'}
+# Insurance Applications is paused while Head Office builds the separate system.
+MODULES = {'heat_map:view':'Heat Map', 'attendance:view':'Attendance'}
 
 
 def now():
@@ -39,6 +40,8 @@ def license_owner(user):
 
 
 def module_active(user, code):
+    if code not in MODULES:
+        return False
     owner = license_owner(user)
     if not owner or not owner.is_active or not owner.is_active_account:
         return False
@@ -52,7 +55,7 @@ def start_trial(user):
         return
     user.module_trial_started_at = now()
     expires = user.module_trial_started_at + timedelta(days=30)
-    for code in OPTIONAL_FRANCHISE_MODULES:
+    for code in MODULES:
         access = next((a for a in user.module_access if a.module_code == code), None)
         if access is None:
             access = UserModuleAccess(user=user, module_code=code)
@@ -76,7 +79,7 @@ def modules():
         User.query.filter_by(id=current_user.id).with_for_update().one()
         value = request.form.get('activation_code', '')[:200]
         code = ModuleActivationCode.query.filter_by(code_hash=fingerprint(value), user_id=current_user.id).with_for_update().first()
-        if not code or code.redeemed_at or code.revoked_at:
+        if not code or code.module_code not in MODULES or code.redeemed_at or code.revoked_at:
             flash('This activation code is invalid, already used, or has been cancelled. Contact Head Office.', 'danger')
         else:
             access = UserModuleAccess.query.filter_by(user_id=current_user.id, module_code=code.module_code).with_for_update().first()
@@ -86,10 +89,17 @@ def modules():
             access.is_enabled = True
             access.paid_activated_at = now()
             code.redeemed_at = now()
+            if code.request_item:
+                code.request_item.status = 'active'
             db.session.commit()
             flash(f'{MODULES[code.module_code]} activated. Access remains active until Head Office deactivates it.', 'success')
         return redirect(url_for('licensing.modules'))
+    from app.module_catalog import catalog, owner_requests, selection_state
+    from app.models import Franchise
+    pending, paid = selection_state(current_user)
     return render_template('modules/index.html', modules=MODULES, owner=current_user,
+                           catalog=catalog(), subscription_requests=owner_requests(current_user), pending_modules=pending,
+                           paid_modules=paid, primary_franchise=db.session.get(Franchise, current_user.assigned_franchise_id()),
                            module_active=module_active, registration_csrf=csrf_token(), utc=utc, now=now())
 
 
@@ -101,6 +111,9 @@ def manage():
     generated = None
     if request.method == 'POST':
         check_csrf()
+        if request.form.get('action') == 'set_price':
+            from app.module_catalog import update_price
+            return update_price()
         user = User.query.filter_by(id=request.form.get('user_id', type=int)).with_for_update().first_or_404()
         code = request.form.get('module_code')
         if not user.has_role('Franchise User') or user.is_admin_user() or code not in MODULES:
@@ -112,11 +125,23 @@ def manage():
                 return redirect(url_for('licensing.manage'))
             raw = secrets.token_hex(16).upper()
             generated = '-'.join(raw[i:i+8] for i in range(0,32,8))
+            from app.module_catalog import pending_item
+            item = pending_item(user.id, code)
+            if item:
+                item.status = 'code_issued'
             db.session.add(ModuleActivationCode(user_id=user.id, module_code=code, code_hash=fingerprint(generated),
-                                               issued_by_id=current_user.id, payment_reference=request.form.get('payment_reference','').strip()[:160]))
+                                               issued_by_id=current_user.id, payment_reference=request.form.get('payment_reference','').strip()[:160],
+                                               request_item=item))
             db.session.commit()
             generated = {'value':generated, 'email':user.email, 'module':MODULES[code]}
         elif action == 'deactivate':
+            from app.models import ModuleSubscriptionItem, ModuleSubscriptionRequest
+            for selection in ModuleSubscriptionItem.query.join(ModuleSubscriptionRequest).filter(
+                ModuleSubscriptionRequest.owner_user_id == user.id,
+                ModuleSubscriptionItem.module_code == code,
+                ModuleSubscriptionItem.status.in_(['pending', 'code_issued', 'active'])
+            ).with_for_update().all():
+                selection.status = 'deactivated'
             access = UserModuleAccess.query.filter_by(user_id=user.id, module_code=code).with_for_update().first()
             if access:
                 access.is_enabled = False
@@ -129,8 +154,10 @@ def manage():
         else:
             abort(400)
     owners = User.query.join(User.roles).filter(Role.name == 'Franchise User').order_by(User.name,User.surname).all()
+    from app.module_catalog import admin_catalog_context
     response = render_template('modules/manage.html', modules=MODULES, owners=owners, generated=generated,
-                               module_active=module_active, registration_csrf=csrf_token(), utc=utc, now=now())
+                               selected_owner_id=request.args.get('user_id', type=int), selected_module_code=request.args.get('module_code'),
+                               module_active=module_active, registration_csrf=csrf_token(), utc=utc, now=now(), **admin_catalog_context())
     return response, 200, {'Cache-Control':'no-store', 'Referrer-Policy':'same-origin'}
 
 

@@ -255,6 +255,42 @@ def ensure_mandatory_franchise_modules(user):
     return changed
 
 
+class ModulePlan(db.Model):
+    __tablename__ = 'module_plans'
+    module_code = db.Column(db.String(80), primary_key=True)
+    monthly_premium = db.Column(db.Numeric(12, 2), nullable=False)
+    updated_by_id = db.Column(db.Integer, db.ForeignKey('users.id'))
+    updated_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    __table_args__ = (db.CheckConstraint('monthly_premium >= 0', name='ck_module_plan_price_nonnegative'),)
+
+
+class ModuleSubscriptionRequest(db.Model):
+    __tablename__ = 'module_subscription_requests'
+    id = db.Column(db.Integer, primary_key=True)
+    owner_user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False, index=True)
+    franchise_id = db.Column(db.Integer, db.ForeignKey('franchises.id'), nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    owner = db.relationship('User', foreign_keys=[owner_user_id], lazy='joined')
+    franchise = db.relationship('Franchise', lazy='joined')
+    items = db.relationship('ModuleSubscriptionItem', back_populates='subscription', lazy='selectin', cascade='all, delete-orphan')
+
+    @property
+    def monthly_total(self):
+        from decimal import Decimal
+        return sum((item.monthly_premium for item in self.items), Decimal('0.00'))
+
+
+class ModuleSubscriptionItem(db.Model):
+    __tablename__ = 'module_subscription_items'
+    id = db.Column(db.Integer, primary_key=True)
+    request_id = db.Column(db.Integer, db.ForeignKey('module_subscription_requests.id'), nullable=False)
+    module_code = db.Column(db.String(80), nullable=False)
+    monthly_premium = db.Column(db.Numeric(12, 2), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='pending')
+    subscription = db.relationship('ModuleSubscriptionRequest', back_populates='items')
+    __table_args__ = (db.UniqueConstraint('request_id', 'module_code', name='uq_subscription_request_module'),)
+
+
 class ModuleActivationCode(db.Model):
     __tablename__ = 'module_activation_codes'
     id = db.Column(db.Integer, primary_key=True)
@@ -266,6 +302,8 @@ class ModuleActivationCode(db.Model):
     redeemed_at = db.Column(db.DateTime)
     revoked_at = db.Column(db.DateTime)
     payment_reference = db.Column(db.String(160), nullable=False, default='')
+    request_item_id = db.Column(db.Integer, db.ForeignKey('module_subscription_items.id', name='fk_activation_subscription_item'))
+    request_item = db.relationship('ModuleSubscriptionItem')
 
 
 class Franchise(db.Model):
