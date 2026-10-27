@@ -68,8 +68,9 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         ).one()
         assert manual_access.is_enabled is True
         assert owner.has_permission("manuals:view") is True
-        assert owner.has_permission("heat_map:view") is False
-        assert owner.has_permission("insurance_app:view") is False
+        assert owner.has_permission("heat_map:view") is True
+        assert owner.has_permission("insurance_app:view") is True
+        assert owner.module_trial_started_at is not None
         assert owner.assigned_franchise_id() == franchise.id
         assert owner.can_access_franchise(franchise.id)
         link = db.session.execute(
@@ -124,7 +125,7 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
         assert "Insurance Applications" in portal_html
         assert "Heat Map" in portal_html
         assert "Manuals" in portal_html
-        assert "Open Attendance" not in portal_html
+        assert "Attendance" in portal_html
 
         monkeypatch.delenv("INSURANCE_APP_URL", raising=False)
         monkeypatch.setenv("INSURANCE_LAUNCH_SECRET", "test-insurance-launch-secret")
@@ -146,11 +147,13 @@ def test_admin_creates_brand_new_franchise_user_from_franchise_details(monkeypat
             session["_user_id"] = str(admin.id)
             session["_fresh"] = True
         g.pop("_login_user", None)
-        deactivate_optional = client.post(
-            f"/admin/franchise-users/{owner.id}/modules",
-            data={},
-        )
-        assert deactivate_optional.status_code == 302
+        assert client.get('/admin/module-activations').status_code == 200
+        with client.session_transaction() as session:
+            csrf = session['registration_csrf']
+        for module in ('heat_map:view','attendance:view','insurance_app:view'):
+            deactivate_optional = client.post('/admin/module-activations', data={
+                'user_id':owner.id,'module_code':module,'action':'deactivate','csrf_token':csrf})
+            assert deactivate_optional.status_code == 302
         db.session.expire_all()
         owner = db.session.get(User, owner.id)
         assert owner.has_permission("manuals:view") is True

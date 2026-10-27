@@ -55,6 +55,7 @@
                         <span class="ms-brand-copy"><strong class="ms-brand-title">Martin's Funerals</strong><small class="ms-brand-module">{{ 'Heatmap' if request.path.startswith('/heat-map') else ('Attendance Register' if request.path.startswith('/attendance') else ('Claims' if request.path.startswith('/insurance-claims') else 'Business Overview')) }}</small></span>
                     </a>
 
+                    {% if current_user.has_role('Franchise User') %}<div class="nav-primary-link"><a href="{{ url_for('licensing.modules') }}"><span class="nav-icon">M</span><span><strong>My Modules</strong><small>Trial status &amp; activation codes</small></span></a></div>{% endif %}
                     {% if territory_owner_access %}
                     <div class="nav-primary-link">
                         <a href="{{ url_for('franchise.territory_index') }}"><span class="nav-icon">T</span><span><strong>Territory &amp; Valuation</strong><small>Franchise territory planning</small></span></a>
@@ -248,7 +249,7 @@
                         <details class="nav-section nav-domain">
                             <summary><span class="nav-icon">A</span><span><strong>Administration</strong><small>Users, imports and system control</small></span></summary>
                             <div class="nav-subtabs">
-                                {% if current_user.has_permission('users:view') %}<a href="{{ url_for('admin.users') }}">Users</a><a href="{{ url_for('admin.franchise_users') }}">Franchise Users</a>{% if current_user.is_admin_user() %}<a href="{{ url_for('registration.applications') }}">Registration Applications</a>{% endif %}<a href="{{ url_for('admin.franchise_employees') }}">Employees</a>{% endif %}
+                                {% if current_user.has_permission('users:view') %}<a href="{{ url_for('admin.users') }}">Users</a><a href="{{ url_for('admin.franchise_users') }}">Franchise Users</a>{% if current_user.is_admin_user() %}<a href="{{ url_for('registration.applications') }}">Registration Applications</a><a href="{{ url_for('licensing.manage') }}">Module Activations</a>{% endif %}<a href="{{ url_for('admin.franchise_employees') }}">Employees</a>{% endif %}
                                 {% if current_user.has_permission('user_roles:view') %}<a href="{{ url_for('admin.roles') }}">Roles & Permissions</a>{% endif %}
                                 {% if is_admin_user or is_finance_user %}<a href="{{ url_for('admin.import_centre') }}">Import Centre</a><a href="{{ url_for('admin.imports_data') }}">Imports & Data</a><a href="{{ url_for('admin.data_integrity') }}">Data Integrity</a><a href="{{ url_for('admin.database_diagnostics') }}">Database Diagnostics</a>{% endif %}
                                 {% if current_user.has_permission('audit_logs:view') %}<a href="{{ url_for('admin.audit_logs') }}">Audit Logs</a>{% endif %}

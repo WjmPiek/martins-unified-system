@@ -6,6 +6,7 @@
 {% for application in applications %}
 <article class="form-section-card"><h2>{{ application.business_name }} — {{ application.status|capitalize }}</h2>
 <p><strong>{{ application.name }} {{ application.surname }}</strong> · {{ application.email }} · {{ application.phone }}<br>Submitted {{ application.created_at.strftime('%d %b %Y %H:%M') }} UTC</p>
+{% if application.admin_alert_sent_at %}<p>Head Office email alert delivered.</p>{% else %}<form method="post" action="{{ url_for('registration.retry_head_office_alert',application_id=application.id) }}"><input type="hidden" name="csrf_token" value="{{ registration_csrf }}"><p>Head Office email alert pending. Check mail settings and Operations Centre if it fails.</p><button class="btn secondary button-auto">Retry Head Office Email</button></form>{% endif %}
 {% if application.status == 'pending' %}
 <form method="post" action="{{ url_for('registration.review',application_id=application.id) }}">
 <input type="hidden" name="csrf_token" value="{{ registration_csrf }}">
