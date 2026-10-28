@@ -616,3 +616,38 @@ html body.app-body .content-area .royalty-management .data-table td:nth-child(n+
 @media (max-width: 899px) {
   html body.app-body.franchise-user-portal .content-area .royalty-overview-page.desktop-royalty-content { display: none !important; }
 }
+
+/* Keep every Royalty History column, including all row actions, in its panel. */
+html body.app-body .content-area .royalty-overview-page .royalties-table {
+  width: 100% !important; min-width: 0 !important; max-width: 100% !important; table-layout: fixed !important;
+}
+html body.app-body .content-area .royalty-overview-page .royalties-table :is(th, td) {
+  box-sizing: border-box; min-width: 0 !important; padding: 10px 6px !important;
+  white-space: normal !important; overflow-wrap: anywhere !important; word-break: normal !important;
+}
+html body.app-body .content-area .royalty-overview-page .royalties-table .badge {
+  display: inline-block; max-width: 100%; box-sizing: border-box; white-space: normal !important; overflow-wrap: anywhere;
+}
+html body.app-body .content-area .royalty-overview-page .royalties-table .button-row {
+  display: grid !important; grid-template-columns: minmax(0, 1fr); gap: 6px !important; width: 100%; min-width: 0; max-width: 100%;
+}
+html body.app-body .content-area .royalty-overview-page .royalties-table .button-row :is(.btn, button) {
+  width: 100% !important; max-width: 100% !important; min-width: 0 !important; margin: 0 !important;
+  padding: 7px 5px !important; white-space: normal !important; overflow-wrap: anywhere; box-sizing: border-box;
+}
+
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(1) { width: 6% !important; }
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(2) { width: 9% !important; }
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(3) { width: 6.5% !important; }
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(4) { width: 7.5% !important; }
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(5) { width: 8% !important; }
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(6) { width: 6% !important; }
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(7) { width: 8% !important; }
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(8) { width: 6.5% !important; }
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(9) { width: 8% !important; }
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(10) { width: 8% !important; }
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(11) { width: 8% !important; }
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(12) { width: 8% !important; }
+html body.app-body .content-area .royalty-results-card .royalties-table :is(th, td):nth-child(13) { width: 10.5% !important; }
+html body.app-body .content-area .royalty-overview-page .royalties-table th { overflow-wrap: normal !important; }
+html body.app-body .content-area .royalty-overview-page .royalties-table .badge { padding: 5px 6px !important; font-size: .65rem !important; overflow-wrap: normal; }
