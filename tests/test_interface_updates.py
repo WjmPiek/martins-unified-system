@@ -83,6 +83,18 @@ def test_all_templates_compile(app):
         app.jinja_env.get_template(name)
 
 
+@pytest.mark.parametrize('path', ['/performance/graphs', '/performance/kpi/cash', '/performance/franchise/1'])
+def test_all_graph_pages_load_the_shared_renderer(app, franchise, path):
+    from app.models import Permission
+    client = login(app, franchise)
+    user = User.query.first()
+    user.roles[0].permissions.append(Permission(module='Performance', action='view', code='performance:view', label='Performance'))
+    db.session.commit()
+    response = client.get(path)
+    assert response.status_code == 200
+    assert 'window.MFSCharts=' in response.text
+
+
 @pytest.mark.parametrize('path', ['/login', '/royalties/', '/platform/theme.css'])
 def test_existing_session_auth_notices_are_discarded_on_every_page(app, franchise, path):
     client = login(app, franchise)
