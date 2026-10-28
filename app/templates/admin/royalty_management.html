@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Royalty Management{% endblock %}
 {% block app_content %}
-<div data-section-page>
+<div class="royalty-management" data-section-page>
 <section class="page-shell">
     <div class="page-header split-header">
         <div>
@@ -53,6 +53,7 @@
 
         <section class="card" id="reporting-periods" data-page-section="reporting-periods" data-title="Reporting Periods">
             <h2>Reporting Periods</h2>
+            <div class="table-responsive">
             <table class="data-table compact-table">
                 <thead><tr><th>Period</th><th>Rows</th><th>Gross</th><th>Royalties</th><th></th></tr></thead>
                 <tbody>
@@ -67,6 +68,7 @@
                 {% endfor %}
                 </tbody>
             </table>
+            </div>
         </section>
     </div>
 
@@ -75,6 +77,7 @@
             <h2>Snapshots for {{ selected_year }}-{{ "%02d"|format(selected_month) }}</h2>
             <span class="badge {{ 'badge-danger' if needs_review else 'badge-success' }}">{{ needs_review|length }} need review</span>
         </div>
+        <div class="table-responsive">
         <table class="data-table compact-table">
             <thead>
                 <tr>
@@ -98,7 +101,7 @@
                     <td>{{ snap.royalty_percentage }}%</td>
                     <td>{{ snap.royalty_amount|rand }}</td>
                     <td>{{ snap.target_amount|rand }}</td>
-                    <td>
+                    <td class="royalty-diagnostics">
                         {% set diag = snap.diagnostics %}
                         {% if diag.blocking_errors %}<strong>Errors:</strong> {{ diag.blocking_errors|join('; ') }}<br>{% endif %}
                         {% if diag.warnings %}<strong>Warnings:</strong> {{ diag.warnings|join('; ') }}<br>{% endif %}
@@ -110,6 +113,7 @@
             {% endfor %}
             </tbody>
         </table>
+        </div>
     </section>
 </section>
 {% endblock %}
