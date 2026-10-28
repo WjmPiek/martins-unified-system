@@ -46,7 +46,7 @@
     {% endif %}
   </div>
 
-  <div class="filter-card branch-context-card">
+  <div class="filter-card royalty-context-card">
     {% if show_all_franchises %}
       <h2>All Branches</h2>
       <p class="muted">Admin view: showing active franchises with royalty calculations for {{ selected_period_label }} only.</p>
@@ -59,7 +59,7 @@
       {% endif %}
     {% endif %}
     {% if accessible_franchises and accessible_franchises|length > 1 %}
-      <div class="branch-selector-row">
+      <div class="royalty-filter-controls">
         <label for="royaltyBranchSelector"><strong>Open branch dashboard</strong></label>
         <select id="royaltyBranchSelector" onchange="if (this.value) window.location.href=this.value;">
           <option value="">Select a branch...</option>
@@ -86,7 +86,7 @@
       </div>
     {% endif %}
     {% if not (accessible_franchises and accessible_franchises|length > 1) %}
-      <div class="branch-selector-row">
+      <div class="royalty-filter-controls">
         <form method="get" action="{{ url_for('royalties.index') }}" class="period-selector-card period-filter-form">
           <div class="period-filter-field"><label for="royaltyMonthSolo"><strong>Month</strong></label><select id="royaltyMonthSolo" name="month">
             {% for value, label in month_options %}
@@ -189,6 +189,7 @@
   </div>
   {% endif %}
 
+  <div class="form-section-card royalty-results-card">
   <div class="table-responsive">
     <table class="system-report-table royalties-table">
       <thead>
@@ -269,6 +270,7 @@
         {% endfor %}
       </tbody>
     </table>
+  </div>
   </div>
 </section>
 {% endblock %}

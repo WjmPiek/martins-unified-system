@@ -559,3 +559,60 @@ html body .ms-topbar.ms-topbar .topbar-user > :is(small, a), html body .ms-topba
 
 .content-area select:not([multiple]) { height: 46px !important; align-self: center; }
 .content-area .page-card { min-width: 0; max-width: 100%; box-sizing: border-box; padding: 24px; overflow-wrap: anywhere; }
+
+/* Royalty sections share one outer width, with controls inside the card. */
+html body.app-body .content-area .royalty-overview-page { display: grid !important; grid-template-columns: minmax(0, 1fr) !important; gap: 20px !important; }
+html body.app-body .content-area .royalty-overview-page > :is(.section-header, .royalty-dashboard-grid, .royalty-context-card, .royalty-results-card, .form-section-card) { width: 100%; min-width: 0; margin: 0 !important; box-sizing: border-box; }
+html body.app-body .content-area .royalty-overview-page .royalty-context-card {
+  display: grid !important; grid-template-columns: minmax(0, 1fr) !important; gap: 12px !important;
+  background: #fff !important; border: 1px solid var(--martins-border) !important;
+  border-radius: 16px !important; padding: 24px !important;
+}
+html body.app-body .content-area .royalty-overview-page .royalty-context-card > :is(h2, p) { grid-column: 1 !important; margin: 0 !important; }
+html body.app-body .content-area .royalty-overview-page .royalty-filter-controls {
+  grid-column: 1 !important; grid-row: auto !important; justify-self: stretch !important;
+  width: 100% !important; max-width: none !important;
+  display: grid !important; grid-template-columns: minmax(220px, 1fr) minmax(380px, 1.3fr) !important;
+  gap: 8px 20px !important; align-items: end !important;
+  margin: 8px 0 0 !important; padding: 0 !important; background: transparent !important; border: 0 !important; box-shadow: none !important;
+}
+html body.app-body .content-area .royalty-overview-page .royalty-filter-controls > label { grid-column: 1 !important; grid-row: 1 !important; }
+html body.app-body .content-area .royalty-overview-page .royalty-filter-controls > select { grid-column: 1 !important; grid-row: 2 !important; min-height: 46px !important; margin: 0 !important; }
+html body.app-body .content-area .royalty-overview-page .royalty-filter-controls .period-filter-form {
+  grid-column: 2 !important; grid-row: 1 / span 2 !important; justify-self: stretch !important; width: 100% !important; max-width: none !important;
+  display: grid !important; grid-template-columns: repeat(2, minmax(0, 1fr)) auto !important;
+  gap: 12px !important; margin: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important;
+}
+html body.app-body .content-area .royalty-overview-page .period-filter-form :is(select, .btn) { min-height: 46px !important; min-width: 0 !important; margin: 0 !important; }
+html body.app-body .content-area .royalty-overview-page .period-filter-field { min-width: 0; display: grid; gap: 8px; }
+html body.app-body .content-area .royalty-overview-page .royalty-filter-controls:not(:has(> select)) .period-filter-form { grid-column: 1 / -1 !important; grid-row: auto !important; }
+html body.app-body .content-area .royalty-overview-page .royalty-results-card { padding: 24px !important; }
+html body.app-body .content-area .royalty-overview-page .royalty-results-card .table-responsive { margin: 0 !important; }
+html body.app-body .content-area .royalty-management .page-shell { gap: 20px !important; }
+html body.app-body .content-area .royalty-management .page-shell > * { width: 100%; min-width: 0; box-sizing: border-box; margin: 0 !important; }
+html body.app-body .content-area .royalty-management .inline-form { max-width: none !important; }
+html body.app-body .content-area .royalty-management .grid.two-col:not(:has(> :not([hidden]))) { display: none !important; }
+html body.app-body .content-area .royalty-management .table-responsive { margin-top: 16px; }
+html body.app-body .content-area .royalty-management .data-table { width: 100%; min-width: 900px; table-layout: auto !important; }
+html body.app-body .content-area .royalty-management .data-table :is(th, td) { white-space: normal !important; overflow: visible; text-overflow: clip; overflow-wrap: anywhere; vertical-align: top; padding: 12px 14px !important; }
+html body.app-body .content-area .royalty-management .royalty-diagnostics { min-width: 240px; max-width: 360px; }
+@media (max-width: 1000px) {
+  html body.app-body .content-area .royalty-overview-page .royalty-filter-controls { grid-template-columns: minmax(0, 1fr) !important; }
+  html body.app-body .content-area .royalty-overview-page .royalty-filter-controls .period-filter-form { grid-column: 1 !important; grid-row: auto !important; margin-top: 8px !important; }
+}
+@media (max-width: 600px) {
+  html body.app-body .content-area .royalty-overview-page :is(.royalty-context-card, .royalty-results-card) { padding: 18px !important; }
+  html body.app-body .content-area .royalty-overview-page .royalty-filter-controls .period-filter-form { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  html body.app-body .content-area .royalty-overview-page .period-filter-form .btn { grid-column: 1 / -1; }
+}
+
+html body.app-body .content-area .royalty-overview-page > .section-header { padding: 24px !important; }
+
+html body.app-body .content-area .royalty-management .data-table th { overflow-wrap: normal; word-break: normal; min-width: 80px; }
+
+html body.app-body .content-area .royalty-management .data-table .badge,
+html body.app-body .content-area .royalty-management .data-table td:nth-child(n+4):nth-child(-n+7) { white-space: nowrap !important; }
+
+@media (max-width: 899px) {
+  html body.app-body.franchise-user-portal .content-area .royalty-overview-page.desktop-royalty-content { display: none !important; }
+}
