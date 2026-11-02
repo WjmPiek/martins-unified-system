@@ -76,6 +76,11 @@ def launch():
             if _franchise_name(franchise)
         }
     )
+    principal = getattr(current_user, 'principal_account', current_user)
+    branch_scope = []
+    if 'franchise user' in _role_names():
+        branch_scope = [dict(id=branch.id, name=_franchise_name(branch), vat_number=branch.vat_number or '')
+                        for branch in principal.assigned_franchises if _franchise_name(branch)]
     serializer = URLSafeTimedSerializer(secret, salt="martins-attendance-launch-v1")
     token = serializer.dumps(
         {
@@ -85,6 +90,7 @@ def launch():
             "is_admin": _is_attendance_admin(),
             "roles": sorted(str(role.name) for role in current_user.roles),
             "franchises": franchise_names,
+            "branch_scope": branch_scope,
             "return_url": os.getenv("MARTINS_MAIN_APP_URL", "").strip(),
         }
     )
