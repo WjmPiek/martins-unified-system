@@ -1,6 +1,6 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, g, abort
 import secrets
-from app.module_switching import requested_module, module_destination, MODULE_DESTINATIONS
+from app.module_switching import requested_module, module_destination, MODULE_DESTINATIONS, module_available, popup_switch, popup_origin
 import time
 from flask_login import login_user, logout_user, login_required, current_user
 from flask_mail import Message
@@ -92,7 +92,7 @@ def login():
             if len(available) > 1:
                 token = secrets.token_urlsafe(32)
                 session['profile_login'] = dict(user_id=user.id, updated=user.updated_at.isoformat(), created=time.time(), token=token)
-                return render_template('auth/profiles.html', profiles=available, csrf_token=token, signing_in=True, return_module=requested_module(), return_module_label=MODULE_DESTINATIONS.get(requested_module(), ('', ''))[0]), 200, {'Cache-Control': 'no-store'}
+                return render_template('auth/profiles.html', profiles=available, csrf_token=token, signing_in=True, popup=popup_switch(), opener_origin=popup_origin(), return_module=requested_module(), return_module_label=MODULE_DESTINATIONS.get(requested_module(), ('', ''))[0]), 200, {'Cache-Control': 'no-store'}
             return complete_login(user, available[0]['key'] if available else None)
         error = 'Unable to sign in. Check your email and password, or contact Head Office if your account is inactive.'
     else:
@@ -117,6 +117,8 @@ def complete_login(identity, key):
     from app.audit import log_action
     log_action('Access', 'Signed in', f'Login identity #{identity.id}; profile {key or "default"}')
     db.session.commit()
+    if popup_switch() and return_module:
+        return redirect(url_for('auth.profiles', module=return_module, popup=1, opener_origin=popup_origin()))
     return redirect(module_destination(return_module) or default_landing_url())
 
 
@@ -134,13 +136,22 @@ def profiles():
         effective = resolve(identity, key)
         if effective is None:
             abort(403)
+        if popup_switch() and not module_available(effective, return_module):
+            abort(403, description='This module is not active or available for the selected branch.')
         clear_context()
         session['access_profile_key'] = key
         g._login_user = effective
         from app.audit import log_action
         log_action('Access', 'Switched profile', f'Login identity #{identity.id}; profile {key}')
         db.session.commit()
+        if popup_switch():
+            return render_template('auth/profile_popup.html', destination=module_destination(return_module), module_label=MODULE_DESTINATIONS[return_module][0], opener_origin=popup_origin()), 200, {'Cache-Control': 'no-store'}
         return redirect(module_destination(return_module) or default_landing_url())
+    if popup_switch():
+        if not return_module:
+            abort(400)
+        profiles = [dict(item, available=module_available(resolve(identity, item['key']), return_module)) for item in choices(identity)]
+        return render_template('auth/profile_popup.html', profiles=profiles, csrf_token=csrf_token(), return_module=return_module, module_label=MODULE_DESTINATIONS[return_module][0], opener_origin=popup_origin()), 200, {'Cache-Control': 'no-store'}
     return render_template('auth/profiles.html', profiles=choices(identity), csrf_token=csrf_token(), signing_in=False, return_module=return_module, return_module_label=MODULE_DESTINATIONS.get(return_module, ('', ''))[0]), 200, {'Cache-Control': 'no-store'}
 
 

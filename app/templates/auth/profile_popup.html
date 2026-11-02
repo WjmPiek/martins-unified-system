@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Switch user / branch</title>
+<style>body{font:16px Arial,sans-serif;color:#211b30;background:#f6f7fb;margin:0;padding:24px}main{max-width:520px;margin:auto;background:white;padding:24px;border:1px solid #e1d9ee;border-radius:18px}h1{font-size:24px;margin-top:0}p{line-height:1.5;color:#647084}label{display:flex;gap:12px;align-items:center;border:1px solid #e1d9ee;border-radius:12px;padding:16px;margin:12px 0}input{width:18px;height:18px}small{display:block;color:#647084;margin-top:5px}.unavailable{background:#f7f7f9;color:#777}button,a.button{display:inline-block;font:700 16px Arial;padding:14px 20px;background:#6b4ba0;color:white;border:0;border-radius:10px;cursor:pointer;text-decoration:none}button.secondary{background:#f0ebf7;color:#6b4ba0}.actions{display:flex;gap:12px;flex-wrap:wrap;margin-top:20px}fieldset{border:0;padding:0;margin:0}legend{font-weight:bold}.notice{color:#9e2340}a{color:#6b4ba0}</style></head><body><main>
+<h1>Switch user / branch</h1>
+{% if destination %}
+<p>Branch selected. Opening {{ module_label }} in your original window.</p>
+<button id="continue">Open {{ module_label }}</button>
+<script>
+(function(){var path={{ destination|tojson }}, origin={{ opener_origin|tojson }};function finish(){if(window.opener&&!window.opener.closed){window.opener.postMessage({type:'martins:branch-switched',path:path},origin);window.close()}else{window.location.assign(path)}}document.getElementById('continue').addEventListener('click',finish);finish()})();
+</script>
+{% else %}
+<p>Choose a branch to open {{ module_label }}. Your current module stays open until you choose.</p>
+<form method="post" action="{{ url_for('auth.profiles') }}">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="popup" value="1"><input type="hidden" name="return_module" value="{{ return_module }}"><input type="hidden" name="opener_origin" value="{{ opener_origin }}">
+<fieldset><legend>Your approved branches</legend>
+{% for profile in profiles %}<label {% if not profile.available %}class="unavailable"{% endif %}><input type="radio" name="profile_key" value="{{ profile.key }}" required {% if not profile.available %}disabled{% endif %}><span>{{ profile.label }}{% if not profile.available %}<small>{{ module_label }} is not active or available for this branch.</small>{% endif %}</span></label>{% endfor %}
+</fieldset><div class="actions"><button type="submit">Open {{ module_label }}</button><button type="button" class="secondary" onclick="window.close()">Cancel</button></div>
+</form>{% endif %}</main></body></html>
