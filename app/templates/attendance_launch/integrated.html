@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block head_extra %}
+<style>
+.attendance-integrated-frame{display:block;width:100%;min-height:500px;border:0;background:transparent}
+</style>
+{% endblock %}
+{% block app_content %}
+<section class="section-header"><div><h1>Attendance</h1><p class="muted">Staff attendance, history, commissions and business settings for your selected branch.</p></div></section>
+<iframe id="attendance-module" class="attendance-integrated-frame" title="Attendance" src="{{ attendance_frame_url }}" data-module-origin="{{ attendance_origin }}" allow="camera {{ attendance_origin }}; geolocation {{ attendance_origin }}; fullscreen {{ attendance_origin }}" referrerpolicy="strict-origin-when-cross-origin" height="640"></iframe>
+<script src="{{ asset_url('attendance-integrated.js') }}" defer></script>
+{% endblock %}

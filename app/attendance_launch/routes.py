@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import os
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 
-from flask import Blueprint, abort, current_app, redirect
+from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
 from flask_login import current_user, login_required
 from itsdangerous import URLSafeTimedSerializer
 
@@ -89,6 +89,11 @@ def launch():
         )
         abort(503, description="Attendance launch is not configured.")
 
+    if request.args.get('frame') != '1':
+        return render_template('attendance_launch/integrated.html',
+                               attendance_frame_url=url_for('attendance_launch.launch', frame='1'),
+                               attendance_origin=f'{urlsplit(endpoint).scheme}://{urlsplit(endpoint).netloc}')
+
     franchise_names = sorted(
         {
             _franchise_name(franchise)
@@ -121,4 +126,6 @@ def launch():
             "return_url": os.getenv("MARTINS_MAIN_APP_URL", "").strip(),
         }
     )
-    return redirect(f"{endpoint}/?{urlencode({'martins_launch': token})}")
+    response = redirect(f"{endpoint}/?{urlencode({'martins_launch': token, 'embedded': '1', 'parent_origin': request.host_url.rstrip('/')})}")
+    response.headers['Cache-Control'] = 'no-store'
+    return response

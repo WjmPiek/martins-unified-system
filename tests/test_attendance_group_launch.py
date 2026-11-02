@@ -18,7 +18,7 @@ def test_attendance_handoff_uses_holder_group_without_expanding_active_branch(mo
     monkeypatch.setenv('ATTENDANCE_APP_URL', 'https://attendance.example.test')
     monkeypatch.setenv('ATTENDANCE_LAUNCH_SECRET', 'test-only-launch-secret')
     app = Flask(__name__)
-    with app.test_request_context('/launch/attendance'):
+    with app.test_request_context('/launch/attendance?frame=1'):
         response = routes.launch.__wrapped__()
     token = parse_qs(urlparse(response.location).query)['martins_launch'][0]
     data = URLSafeTimedSerializer('test-only-launch-secret', salt='martins-attendance-launch-v1').loads(token)
@@ -37,7 +37,7 @@ def test_nonowner_launch_does_not_inherit_a_principals_group(monkeypatch):
     monkeypatch.setattr(routes, 'get_accessible_franchises', lambda: [])
     monkeypatch.setenv('ATTENDANCE_APP_URL', 'https://attendance.example.test')
     monkeypatch.setenv('ATTENDANCE_LAUNCH_SECRET', 'test-only-launch-secret')
-    with Flask(__name__).test_request_context('/launch/attendance'):
+    with Flask(__name__).test_request_context('/launch/attendance?frame=1'):
         response = routes.launch.__wrapped__()
     token = parse_qs(urlparse(response.location).query)['martins_launch'][0]
     data = URLSafeTimedSerializer('test-only-launch-secret', salt='martins-attendance-launch-v1').loads(token)
@@ -109,9 +109,18 @@ def test_linked_branch_profile_uses_approved_holder_attendance_without_head_offi
     monkeypatch.setenv('ATTENDANCE_APP_URL','https://attendance.example.test')
     monkeypatch.setenv('ATTENDANCE_LAUNCH_SECRET','test-only-launch-secret')
     client=app.test_client();sign_in(client,choice['key'])
-    response=call(client,'get','/launch/attendance')
+    page=call(client,'get','/launch/attendance')
+    assert page.status_code==200
+    assert 'id="attendance-module"' in page.text
+    assert 'src="/launch/attendance?frame=1"' in page.text
+    assert 'data-module-switch' in page.text
+    assert 'geolocation https://attendance.example.test' in page.text
+    response=call(client,'get','/launch/attendance?frame=1')
     assert response.status_code==302
     token=parse_qs(urlparse(response.location).query)['martins_launch'][0]
     payload=URLSafeTimedSerializer('test-only-launch-secret',salt='martins-attendance-launch-v1').loads(token)
     assert payload['email']==owner.email and payload['active_franchise_id']==branches[1].id
     assert payload['is_admin'] is False
+    query=parse_qs(urlparse(response.location).query)
+    assert query['embedded']==['1']
+    assert response.headers['Cache-Control']=='no-store'
