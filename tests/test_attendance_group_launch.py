@@ -26,6 +26,7 @@ def test_attendance_handoff_uses_holder_group_without_expanding_active_branch(mo
     assert data['branch_scope'] == [{'id':1,'name':'Branch One','vat_number':'4000000000'}, {'id':2,'name':'Branch Two','vat_number':'4000000000'}]
     assert data['is_admin'] is False
     assert data['active_franchise_id']==1 and data['primary_franchise_id']==1
+    assert data['business_profile']['franchise_id']==1
 
 
 def test_nonowner_launch_does_not_inherit_a_principals_group(monkeypatch):
@@ -41,6 +42,19 @@ def test_nonowner_launch_does_not_inherit_a_principals_group(monkeypatch):
     token = parse_qs(urlparse(response.location).query)['martins_launch'][0]
     data = URLSafeTimedSerializer('test-only-launch-secret', salt='martins-attendance-launch-v1').loads(token)
     assert data['branch_scope'] == []
+    assert data['business_profile'] is None
+
+
+def test_primary_business_details_map_registration_and_contact_fields():
+    primary=SimpleNamespace(id=1,business_name='Northcliff',pty_business_name='Example Pty Ltd',pty_number='2026/000001/07',
+                            vat_number='4000000000',office_address='Example address',office_number='0100000000',
+                            after_hours_number='0800000000',franchisee_cell='0700000000',website_url='https://example.test')
+    details=routes._business_profile(primary)
+    assert details['franchise_name']=='Northcliff' and details['business_name']=='Example Pty Ltd'
+    assert details['business_registration_number']=='2026/000001/07'
+    assert details['vat_number']=='4000000000' and details['office_address']=='Example address'
+    assert details['twenty_four_hour_number']=='0800000000' and details['contact_number']=='0700000000'
+    assert details['website']=='https://example.test'
 
 
 def test_secondary_profile_resolves_only_to_an_approved_top_level_holder(monkeypatch):

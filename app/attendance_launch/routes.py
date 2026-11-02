@@ -55,6 +55,19 @@ def _franchise_name(franchise) -> str:
     ).strip()
 
 
+def _business_profile(branch):
+    """Map the holder's primary franchise record to Attendance's profile fields."""
+    def value(name):
+        return str(getattr(branch, name, None) or '').strip()
+    registered = value('pty_business_name') or value('ck_business_name') or _franchise_name(branch)
+    registration = value('pty_number') if value('pty_business_name') else value('ck_number')
+    return dict(franchise_id=branch.id, franchise_name=_franchise_name(branch), business_name=registered,
+                trading_as=_franchise_name(branch), business_registration_number=registration,
+                vat_number=value('vat_number'), office_address=value('office_address'),
+                website=value('website_url'), office_number=value('office_number'),
+                twenty_four_hour_number=value('after_hours_number'), contact_number=value('franchisee_cell'))
+
+
 @attendance_launch_bp.route("/launch/attendance")
 @login_required
 def launch():
@@ -85,9 +98,13 @@ def launch():
     )
     principal = holder
     branch_scope = []
+    business_profile = None
     if 'franchise user' in _role_names():
         branch_scope = [dict(id=branch.id, name=_franchise_name(branch), vat_number=branch.vat_number or '')
                         for branch in principal.assigned_franchises if _franchise_name(branch)]
+        primary = next((branch for branch in principal.assigned_franchises if branch.id == principal.assigned_franchise_id()), None)
+        if primary:
+            business_profile = _business_profile(primary)
     serializer = URLSafeTimedSerializer(secret, salt="martins-attendance-launch-v1")
     token = serializer.dumps(
         {
@@ -98,6 +115,7 @@ def launch():
             "roles": sorted(str(role.name) for role in current_user.roles),
             "franchises": franchise_names,
             "branch_scope": branch_scope,
+            "business_profile": business_profile,
             "active_franchise_id": active_branch.id if active_branch else None,
             "primary_franchise_id": principal.assigned_franchise_id() if branch_scope else None,
             "return_url": os.getenv("MARTINS_MAIN_APP_URL", "").strip(),
