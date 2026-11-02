@@ -81,3 +81,12 @@ html body .ms-sidebar :is(.side-group,.nav-section)>summary strong{font:700 11.7
  html body:has(.app-menu.ms-sidebar[open],.app-sidebar.ms-sidebar.show,.sidebar--reference.ms-sidebar.is-open,.attendance-menu-open),
  html body.claims-nav-open,html body.sidebar-drawer-open{overflow:hidden!important;overscroll-behavior:none!important;touch-action:pan-y!important}
 }
+
+/* Main-site branding is not a navigation item or a hover target. */
+html:root body .app-menu.ms-sidebar>.menu-panel>.ms-brand.ms-brand,
+html:root body .app-menu.ms-sidebar>.menu-panel>.ms-brand.ms-brand:is(:hover,:focus,:active,.active,.is-active){margin:0 0 20px!important;background:#8469b0!important;background-image:none!important;color:#fff!important;transform:none!important;translate:none!important;scale:none!important;box-shadow:none!important;animation:none!important;transition:none!important}
+html:root body .app-menu.ms-sidebar>.menu-panel>.ms-brand.ms-brand :is(.ms-brand-title,.ms-brand-module){color:#fff!important;opacity:1!important}
+@media(min-width:981px){
+ html:root body .app-menu.ms-sidebar>.menu-panel{height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important}
+ html:root body .app-menu.ms-sidebar .sidebar-nav{min-height:0!important}
+}

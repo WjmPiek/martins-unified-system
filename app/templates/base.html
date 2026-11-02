@@ -46,6 +46,10 @@
                     <span></span><span></span><span></span><span></span>
                 </summary>
                 <div class="menu-panel">
+                    <a class="sidebar-logo ms-brand" href="{{ url_for('performance.graphs') if current_user.has_permission('performance:view') else url_for('dashboard.index') }}">
+                        <img src="{{ brand_logo_url }}" alt="Martin's Funerals logo" width="180" height="81" loading="eager" decoding="async" fetchpriority="high">
+                        <span class="ms-brand-copy"><strong class="ms-brand-title">Martin's Funerals</strong><small class="ms-brand-module">{{ 'Heatmap' if request.path.startswith('/heat-map') else ('Attendance Register' if request.path.startswith('/attendance') else ('Claims' if request.path.startswith('/insurance-claims') else 'Business Overview')) }}</small></span>
+                    </a>
                 <nav class="sidebar-nav">
                     {% set nav_role_names = shell_role_names %}
                     {% set is_franchise_user = shell_is_franchise_user %}
@@ -53,10 +57,6 @@
                     {% set is_finance_user = shell_is_finance_user %}
                     {% set pure_franchise_portal = shell_pure_franchise_portal %}
 
-                    <a class="sidebar-logo ms-brand" href="{{ url_for('performance.graphs') if current_user.has_permission('performance:view') else url_for('dashboard.index') }}">
-                        <img src="{{ brand_logo_url }}" alt="Martin's Funerals logo" width="180" height="81" loading="eager" decoding="async" fetchpriority="high">
-                        <span class="ms-brand-copy"><strong class="ms-brand-title">Martin's Funerals</strong><small class="ms-brand-module">{{ 'Heatmap' if request.path.startswith('/heat-map') else ('Attendance Register' if request.path.startswith('/attendance') else ('Claims' if request.path.startswith('/insurance-claims') else 'Business Overview')) }}</small></span>
-                    </a>
 
                     {% if pure_franchise_portal %}
                     <div class="franchise-context-card"><small>Your franchise</small><strong>{{ selected_franchise.business_name if selected_franchise else 'My Business' }}</strong></div>
@@ -265,7 +265,7 @@
 
 <script>
 (function () {
-  document.querySelectorAll('.sidebar-nav a').forEach(function(a){
+  document.querySelectorAll('.sidebar-nav a:not(.ms-brand):not(.sidebar-logo)').forEach(function(a){
     try {
       var u=new URL(a.href, window.location.origin);
       var samePath = u.pathname === window.location.pathname;
@@ -457,7 +457,7 @@ document.addEventListener('DOMContentLoaded', function () {
 (function () {
   var menu = document.querySelector('.app-menu');
   if (!menu) return;
-  var desktopQuery = window.matchMedia('(min-width: 900px)');
+  var desktopQuery = window.matchMedia('(min-width: 981px)');
   function syncSidebarForViewport() {
     if (desktopQuery.matches) {
       menu.setAttribute('open', '');
@@ -477,7 +477,7 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!desktopQuery.matches) menu.removeAttribute('open');
     });
   });
-  var links = menu.querySelectorAll('.sidebar-nav a');
+  var links = menu.querySelectorAll('.sidebar-nav a:not(.ms-brand):not(.sidebar-logo)');
   var currentPath = window.location.pathname;
   var currentSearch = new URLSearchParams(window.location.search);
   var best = null;
