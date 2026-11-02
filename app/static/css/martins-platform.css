@@ -528,3 +528,7 @@ html:root body .ms-sidebar.ms-sidebar .ms-brand.ms-brand :is(.ms-brand-title,.ms
 html:root body .ms-sidebar.ms-sidebar:has(>.ms-brand){row-gap:0!important}
 html:root body .ms-sidebar.ms-sidebar>.ms-brand.ms-brand{margin-bottom:20px!important}
 html:root body .ms-sidebar.ms-sidebar .sidebar-nav>.ms-brand.ms-brand{margin-bottom:12px!important}
+
+/* The selected franchise uses the same typography and alignment as sidebar tabs. */
+html:root body .ms-sidebar.ms-sidebar .franchise-context-card{display:flex!important;align-items:center!important;box-sizing:border-box!important;min-height:54px!important;width:100%!important;margin:0 0 20px!important;padding:12px 10px!important;border-radius:12px!important;color:#fff!important}
+html:root body .ms-sidebar.ms-sidebar .franchise-context-card strong{display:block!important;min-width:0!important;margin:0!important;padding:0!important;font:400 10.5px/1.4 Arial,Helvetica,sans-serif!important;letter-spacing:1.96px!important;text-transform:uppercase!important;text-align:left!important;color:#fff!important;white-space:normal!important;overflow-wrap:anywhere!important}
