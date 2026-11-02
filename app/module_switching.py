@@ -69,7 +69,8 @@ def popup_switch():
 
 def account_role_label(user):
     names = {'Franchise User': 'Franchise Holder', 'Super Admin': 'Administrator', 'Admin': 'Administrator',
-             'Manager User': 'Manager', 'Employee User': 'Employee'}
+             'Manager User': 'Manager', 'Employee User': 'Employee', 'Franchise Manager': 'Manager',
+             'Franchise Employee': 'Employee', 'Franchise Agent': 'Agent'}
     return ', '.join(dict.fromkeys(names.get(role.name, role.name) for role in user.roles)) or 'User'
 
 
