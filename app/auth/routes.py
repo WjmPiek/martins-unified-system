@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, redirect, url_for, flash, request, current_app, session, g, abort
 import secrets
+from app.module_switching import requested_module, module_destination, MODULE_DESTINATIONS
 import time
 from flask_login import login_user, logout_user, login_required, current_user
 from flask_mail import Message
@@ -91,7 +92,7 @@ def login():
             if len(available) > 1:
                 token = secrets.token_urlsafe(32)
                 session['profile_login'] = dict(user_id=user.id, updated=user.updated_at.isoformat(), created=time.time(), token=token)
-                return render_template('auth/profiles.html', profiles=available, csrf_token=token, signing_in=True), 200, {'Cache-Control': 'no-store'}
+                return render_template('auth/profiles.html', profiles=available, csrf_token=token, signing_in=True, return_module=requested_module(), return_module_label=MODULE_DESTINATIONS.get(requested_module(), ('', ''))[0]), 200, {'Cache-Control': 'no-store'}
             return complete_login(user, available[0]['key'] if available else None)
         error = 'Unable to sign in. Check your email and password, or contact Head Office if your account is inactive.'
     else:
@@ -100,6 +101,7 @@ def login():
 
 
 def complete_login(identity, key):
+    return_module = requested_module()
     from app.access_profiles import clear_context, resolve
     effective = resolve(identity, key) if key else identity
     if effective is None:
@@ -115,7 +117,7 @@ def complete_login(identity, key):
     from app.audit import log_action
     log_action('Access', 'Signed in', f'Login identity #{identity.id}; profile {key or "default"}')
     db.session.commit()
-    return redirect(default_landing_url())
+    return redirect(module_destination(return_module) or default_landing_url())
 
 
 @auth_bp.route('/profiles', methods=['GET', 'POST'])
@@ -125,6 +127,7 @@ def profiles():
     from app.registration import csrf_token, check_csrf
     user = current_user._get_current_object()
     identity = getattr(user, 'identity_account', user)
+    return_module = requested_module()
     if request.method == 'POST':
         check_csrf()
         key = request.form.get('profile_key', '')
@@ -137,8 +140,8 @@ def profiles():
         from app.audit import log_action
         log_action('Access', 'Switched profile', f'Login identity #{identity.id}; profile {key}')
         db.session.commit()
-        return redirect(default_landing_url())
-    return render_template('auth/profiles.html', profiles=choices(identity), csrf_token=csrf_token(), signing_in=False), 200, {'Cache-Control': 'no-store'}
+        return redirect(module_destination(return_module) or default_landing_url())
+    return render_template('auth/profiles.html', profiles=choices(identity), csrf_token=csrf_token(), signing_in=False, return_module=return_module, return_module_label=MODULE_DESTINATIONS.get(return_module, ('', ''))[0]), 200, {'Cache-Control': 'no-store'}
 
 
 @auth_bp.route("/logout")

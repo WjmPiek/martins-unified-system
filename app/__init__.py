@@ -1,4 +1,4 @@
-﻿from flask import Flask, g, request, url_for
+from flask import Flask, g, request, url_for
 from flask import send_file
 import click
 import logging
@@ -209,6 +209,9 @@ def create_app(config_class=Config):
             "brand_logo_fallback_url": _static_asset_url("img/logo-placeholder.svg"),
             "asset_url": _static_asset_url,
         }
+
+    from app.module_switching import switcher_context
+    app.context_processor(switcher_context)
 
     @app.context_processor
     def inject_franchise_context():
