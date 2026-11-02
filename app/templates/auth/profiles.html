@@ -7,10 +7,11 @@
 .access-profile-form button{width:100%;}
 </style>
 <section class="form-section-card" aria-labelledby="profile-heading">
-    <h1 id="profile-heading">Choose your access profile</h1>
-    <p>Use Head Office for your assigned office work. Choose a franchise to work as its holder.</p>
+    <h1 id="profile-heading">Switch user / branch</h1>
+    <p>Select one of your approved users or linked branches.{% if return_module_label %} You will return to {{ return_module_label }} after switching.{% endif %}</p>
     <form method="post" action="{{ url_for('auth.login') if signing_in else url_for('auth.profiles') }}" class="access-profile-form">
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% if return_module %}<input type="hidden" name="return_module" value="{{ return_module }}">{% endif %}
         <fieldset style="border:0;padding:0;margin:0 0 16px;">
             <legend style="font-weight:700;margin-bottom:10px;">Access profile</legend>
             {% for profile in profiles %}
@@ -20,7 +21,7 @@
             </label>
             {% endfor %}
         </fieldset>
-        <button type="submit">Open selected profile</button>
+        <button type="submit">{% if return_module_label %}Open {{ return_module_label }} for selected branch{% else %}Open selected user / branch{% endif %}</button>
     </form>
 </section>
 {% endmacro %}
