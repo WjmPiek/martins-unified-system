@@ -8,6 +8,7 @@ from flask_login import current_user, login_required
 from itsdangerous import URLSafeTimedSerializer
 
 from app.franchise_context import get_accessible_franchises
+from app.access_profiles import attendance_holder_for
 
 
 attendance_launch_bp = Blueprint("attendance_launch", __name__)
@@ -58,7 +59,13 @@ def _franchise_name(franchise) -> str:
 @login_required
 def launch():
     """Open Attendance with the current Martins user and access scope."""
-    if not current_user.has_permission("attendance:view"):
+    accessible = get_accessible_franchises()
+    active_branch = getattr(current_user,'profile_franchise',None) or (accessible[0] if len(accessible)==1 else None)
+    try:
+        holder = attendance_holder_for(current_user,active_branch)
+    except ValueError as exc:
+        abort(409,description=str(exc))
+    if not holder.has_permission("attendance:view"):
         abort(403)
 
     endpoint = _attendance_endpoint()
@@ -76,7 +83,7 @@ def launch():
             if _franchise_name(franchise)
         }
     )
-    principal = getattr(current_user, 'principal_account', current_user)
+    principal = holder
     branch_scope = []
     if 'franchise user' in _role_names():
         branch_scope = [dict(id=branch.id, name=_franchise_name(branch), vat_number=branch.vat_number or '')
@@ -85,12 +92,14 @@ def launch():
     token = serializer.dumps(
         {
             "module": "attendance",
-            "email": current_user.email,
+            "email": holder.email,
             "name": _display_name(),
             "is_admin": _is_attendance_admin(),
             "roles": sorted(str(role.name) for role in current_user.roles),
             "franchises": franchise_names,
             "branch_scope": branch_scope,
+            "active_franchise_id": active_branch.id if active_branch else None,
+            "primary_franchise_id": principal.assigned_franchise_id() if branch_scope else None,
             "return_url": os.getenv("MARTINS_MAIN_APP_URL", "").strip(),
         }
     )

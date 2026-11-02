@@ -14,6 +14,33 @@ def office_roles(user):
     return [role for role in user.roles if role.name not in FRANCHISE_SCOPED_ROLE_NAMES]
 
 
+def attendance_holder_for(user, branch=None):
+    """Resolve a linked branch to an already approved, top-level holder context."""
+    principal = getattr(user, 'principal_account', user)
+    if not user.has_role('Franchise User') or office_roles(user):
+        return principal
+    branch = branch or getattr(user, 'profile_franchise', None)
+    if branch is None:
+        branch = db.session.get(Franchise, principal.assigned_franchise_id())
+    if branch is None:
+        return principal
+    identity = getattr(user, 'identity_account', user)
+    approved = {choice['principal'].id:choice['principal'] for choice in choices(identity)}
+    approved[principal.id] = principal
+    owners = [owner for owner in approved.values() if owner.has_role('Franchise User') and not office_roles(owner)
+              and branch.id in {item.id for item in owner.assigned_franchises}]
+    grouped = [owner for owner in owners if len(owner.assigned_franchises)>1]
+    if not grouped:
+        return principal
+    roots = [owner for owner in grouped if not any(
+        owner.assigned_franchise_id() in {item.id for item in other.assigned_franchises}
+        and owner.assigned_franchise_id()!=other.assigned_franchise_id()
+        for other in grouped if other.id!=owner.id)]
+    if len(roots)!=1:
+        raise ValueError('Attendance branch ownership is ambiguous. Head Office must resolve overlapping holder groups.')
+    return roots[0]
+
+
 def choices(identity):
     if not active(identity):
         return []
@@ -115,7 +142,18 @@ class ProfileUser(UserMixin):
         return User.has_role(self, role_name)
 
     def has_permission(self, code):
+        if code == 'attendance:view':
+            try:
+                owner = self.attendance_owner_account
+            except ValueError:
+                return False
+            if owner.id != self.principal_account.id:
+                return User.has_permission(owner, code)
         return User.has_permission(self, code)
+
+    @cached_property
+    def attendance_owner_account(self):
+        return attendance_holder_for(self, self.profile_franchise)
 
 
 def resolve(identity, key):
