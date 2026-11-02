@@ -30,6 +30,8 @@
 <link rel="apple-touch-icon" href="/static/brand/icon-180.png?v=20260918-brand" sizes="180x180">
 <link rel="stylesheet" href="{{ asset_url('css/module-shell.css') }}">
 {% block head_extra %}{% endblock %}
+<link rel="stylesheet" href="{{ asset_url('module-switcher.css') }}">
+<link rel="stylesheet" href="{{ asset_url('module-typography.css') }}">
 </head>
 {% set shell_role_names = current_user.roles|map(attribute='name')|list if current_user.is_authenticated else [] %}
 {% set shell_is_franchise_user = 'Franchise User' in shell_role_names or 'Franchise Manager' in shell_role_names or 'Franchise Employee' in shell_role_names or 'Franchise Agent' in shell_role_names or 'Manager' in shell_role_names or 'Employee' in shell_role_names or 'Agent' in shell_role_names or 'Read Only User' in shell_role_names %}
@@ -308,15 +310,14 @@
                         </div>
                     </div>
                     <div class="topbar-user">
-                        <span>Logged in as</span>
+                        <span>Signed in as</span>
                         <strong>{{ current_user.full_name }}</strong>
-                        <small>{{ current_user.roles|map(attribute='name')|join(', ') or 'No Role' }}</small>
-                        {% if current_user.profile_label is defined %}<span>{{ current_user.profile_label }}</span>{% endif %}
-                        <a class="logout-link secondary-link" href="{{ profile_switch_url }}">Switch user / branch</a>
+                        <small>{{ account_role_label }}</small>
+                        <a class="logout-link secondary-link" href="{{ profile_switch_url }}" {% if profile_switch_module %}data-module-switch{% endif %}>Switch user / branch</a>
                         {% if privileged_user and franchise_view_mode %}
                             <a class="logout-link secondary-link" href="{{ url_for('dashboard.main_dashboard') }}">Main Dashboard</a>
                         {% endif %}
-                        <a class="logout-link" href="{{ url_for('auth.logout') }}">Log out</a>
+                        <a class="logout-link" href="{{ url_for('auth.logout') }}">Logout</a>
                     </div>
                 </header>
 
@@ -582,5 +583,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
 });
 </script>
+<script src="{{ asset_url('module-switcher.js') }}"></script>
 </body>
 </html>

@@ -65,3 +65,49 @@ def test_heatmap_header_preserves_module_when_switching(app):
     assert page.status_code == 200
     assert 'href="/profiles?module=heatmap"' in page.text
     assert 'Switch user / branch' in page.text
+
+
+def test_popup_shows_only_chooser_and_blocks_inactive_module(app):
+    _, owner, branches, profile = setup_accounts(app)
+    client = app.test_client(); sign_in(client, f'branch:{profile.id}')
+    page = call(client, 'get', '/profiles?module=heatmap&popup=1')
+    assert page.status_code == 200
+    assert 'Your approved branches' in page.text and 'disabled' in page.text
+    assert 'topbar-user' not in page.text and 'app-sidebar' not in page.text
+    with client.session_transaction() as session:
+        token = session['registration_csrf']
+        previous = session['access_profile_key']
+    result = call(client, 'post', '/profiles', data={'popup':'1', 'return_module':'heatmap', 'profile_key':f'linked:{profile.id}:{branches[1].id}', 'csrf_token':token})
+    assert result.status_code == 403
+    with client.session_transaction() as session:
+        assert session['access_profile_key'] == previous
+
+
+@pytest.mark.parametrize('module,path', [('heatmap','/heat-map/'),('attendance','/launch/attendance')])
+def test_popup_switch_returns_module_to_original_window(app, module, path):
+    from app.extensions import db
+    from app.module_licensing import start_trial
+    _, owner, branches, profile = setup_accounts(app)
+    start_trial(owner); db.session.commit()
+    client = app.test_client(); sign_in(client, f'branch:{profile.id}')
+    page = call(client, 'get', f'/profiles?module={module}&popup=1')
+    assert 'Your approved branches' in page.text
+    with client.session_transaction() as session:
+        token = session['registration_csrf']
+    data={'popup':'1', 'return_module':module, 'profile_key':f'linked:{profile.id}:{branches[1].id}', 'csrf_token':token, 'opener_origin':'https://evil.example'}
+    result = call(client, 'post', '/profiles', data=data)
+    assert result.status_code == 200 and 'martins:branch-switched' in result.text
+    assert path in result.text and 'evil.example' not in result.text
+    assert call(client,'get','/_profile_test/who').json['ids'] == [branches[1].id]
+
+
+def test_popup_return_survives_sign_in(app):
+    _, owner, branches, profile = setup_accounts(app)
+    client = app.test_client()
+    result = call(client,'post','/login?next=%2Fprofiles%3Fmodule%3Dattendance%26popup%3D1%26opener_origin%3Dhttps%253A%252F%252Fname-attendance-register-frontend.onrender.com',data={'email':'deon@martinsdirect.com','password':'one-login-password'})
+    assert 'name="popup" value="1"' in result.text
+    with client.session_transaction() as session:
+        token=session['profile_login']['token']
+    result=call(client,'post','/login',data={'profile_key':f'branch:{profile.id}','csrf_token':token,'return_module':'attendance','popup':'1','opener_origin':'https://name-attendance-register-frontend.onrender.com'})
+    assert '/profiles?' in result.location and 'popup=1' in result.location
+    assert 'opener_origin=https://name-attendance-register-frontend.onrender.com' in result.location

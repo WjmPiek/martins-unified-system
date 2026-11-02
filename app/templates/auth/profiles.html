@@ -10,6 +10,7 @@
     <h1 id="profile-heading">Switch user / branch</h1>
     <p>Select one of your approved users or linked branches.{% if return_module_label %} You will return to {{ return_module_label }} after switching.{% endif %}</p>
     <form method="post" action="{{ url_for('auth.login') if signing_in else url_for('auth.profiles') }}" class="access-profile-form">
+        {% if popup %}<input type="hidden" name="popup" value="1"><input type="hidden" name="opener_origin" value="{{ opener_origin }}">{% endif %}
         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
         {% if return_module %}<input type="hidden" name="return_module" value="{{ return_module }}">{% endif %}
         <fieldset style="border:0;padding:0;margin:0 0 16px;">
