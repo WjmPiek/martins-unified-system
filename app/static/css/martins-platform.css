@@ -532,3 +532,14 @@ html:root body .ms-sidebar.ms-sidebar .sidebar-nav>.ms-brand.ms-brand{margin-bot
 /* The selected franchise uses the same typography and alignment as sidebar tabs. */
 html:root body .ms-sidebar.ms-sidebar .franchise-context-card{display:flex!important;align-items:center!important;box-sizing:border-box!important;min-height:54px!important;width:100%!important;margin:0 0 20px!important;padding:12px 10px!important;border-radius:12px!important;color:#fff!important}
 html:root body .ms-sidebar.ms-sidebar .franchise-context-card strong{display:block!important;min-width:0!important;margin:0!important;padding:0!important;font:400 10.5px/1.4 Arial,Helvetica,sans-serif!important;letter-spacing:1.96px!important;text-transform:uppercase!important;text-align:left!important;color:#fff!important;white-space:normal!important;overflow-wrap:anywhere!important}
+
+/* Compact navigation labels stay inside sidebar cards on desktop and phones. */
+html:root:root body .ms-sidebar.ms-sidebar{-webkit-text-size-adjust:100%!important;text-size-adjust:100%!important}
+html:root:root body .ms-sidebar.ms-sidebar :is(.nav-section>summary,.side-group>summary,.side-toggle,.side-link,.sidebar-menu__item,.tab-button,.side-section-link,.side-main-link,.nav-primary-link>a,a.nav-primary-link,.nav-subtabs>a,.side-tabs>a,.sidebar-nav>a,.side-submenu>a,.ms-nav-submenu>a,.sidebar-subnav>a,.sidebar-submenu>a){font-size:9.5px!important;line-height:1.5!important;letter-spacing:1.1px!important;white-space:nowrap!important;min-width:0!important}
+html:root:root body .ms-sidebar.ms-sidebar :is(.nav-section>summary,.side-group>summary,.side-toggle,.side-link,.sidebar-menu__item,.tab-button,.side-section-link,.side-main-link,.nav-primary-link>a,a.nav-primary-link,.nav-subtabs>a,.side-tabs>a,.sidebar-nav>a,.side-submenu>a,.ms-nav-submenu>a,.sidebar-subnav>a,.sidebar-submenu>a) :is(strong,span:not(.nav-icon):not(.ms-nav-icon):not(.nav-count-badge),.nav-label,.nav-title){font-size:inherit!important;line-height:inherit!important;letter-spacing:inherit!important}
+@media(max-width:480px){
+ html:root:root body .ms-sidebar.ms-sidebar :is(.nav-section>summary,.side-group>summary,.side-toggle,.side-link,.sidebar-menu__item,.tab-button,.side-section-link,.side-main-link,.nav-primary-link>a,a.nav-primary-link,.nav-subtabs>a,.side-tabs>a,.sidebar-nav>a,.side-submenu>a,.ms-nav-submenu>a,.sidebar-subnav>a,.sidebar-submenu>a){font-size:9px!important;letter-spacing:.4px!important}
+}
+
+html:root:root body .ms-sidebar.ms-sidebar .ms-brand.ms-brand :is(.ms-brand-title,.ms-brand-module),html:root:root body .ms-sidebar.ms-sidebar .franchise-context-card strong{font-size:9.5px!important;letter-spacing:1.1px!important}
+@media(max-width:480px){html:root:root body .ms-sidebar.ms-sidebar .ms-brand.ms-brand :is(.ms-brand-title,.ms-brand-module),html:root:root body .ms-sidebar.ms-sidebar .franchise-context-card strong{font-size:9px!important;letter-spacing:.4px!important}}
