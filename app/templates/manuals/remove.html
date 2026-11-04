@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block app_content %}
+<section class="form-section-card">
+  <h1>Remove manual</h1>
+  <h2>{{ manual.title }}</h2>
+  <p>This removes this manual and all its versions from the library, PDF search and document links. Linked indexes will also be hidden. Uploaded documents and acknowledgement history are retained for audit.</p>
+  <p>Check the title and versions carefully if you are removing a duplicate.</p>
+  <div class="table-responsive">
+    <table>
+      <thead><tr><th>Version</th><th>File</th><th>Published</th></tr></thead>
+      <tbody>{% for version in versions %}<tr><td>{{ version.version_label }}</td><td>{{ version.filename }}</td><td>{{ 'Yes' if version.is_published else 'No' }}</td></tr>{% else %}<tr><td colspan="3">No uploaded versions.</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <form method="post" action="{{ url_for('manuals.remove_manual', manual_id=manual.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label><input type="checkbox" name="confirm_remove" value="{{ manual.id }}" required> I confirm that I want to remove {{ manual.title }}.</label>
+    <div class="button-row">
+      <button class="btn danger" type="submit">Remove manual</button>
+      <a class="btn secondary" href="{{ url_for('manuals.manual_detail', manual_id=manual.id) }}">Cancel</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

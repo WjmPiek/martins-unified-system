@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block app_content %}
+<section class="form-section-card">
+  <h1>Manual reader access</h1>
+  <h2>{{ manual.title }}</h2>
+  <p>Your account always retains access. Only wjm@martinsdirect.com can change these settings or remove manuals.</p>
+  {% if core %}<p>Module {{ core }} is compulsory. All franchise users with Manuals access must be able to read it.</p>{% endif %}
+  {% if is_territory %}<p>The Territory Manual is limited to your account and the Head Office employees you select below.</p>{% endif %}
+  <form method="post">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="audience">Who may read this manual?</label>
+    {% if core %}<input type="hidden" name="audience" value="all"><p>All users with Manuals access</p>
+    {% elif is_territory %}<input type="hidden" name="audience" value="selected"><p>Selected Head Office employees and the system owner</p>
+    {% else %}<select name="audience" id="audience">{% for value, label in audiences.items() %}<option value="{{ value }}" {% if manual.audience == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% endif %}
+    <label for="required-module">Module activation required</label>
+    {% if core or is_territory %}<input type="hidden" name="required_module" value=""><p>No optional activation requirement.</p>
+    {% elif inferred_module %}<input type="hidden" name="required_module" value="{{ inferred_module }}"><p>{{ modules[inferred_module] }} must be available for the selected franchise-holder profile. This requirement cannot be removed.</p>
+    {% else %}<select name="required_module" id="required-module"><option value="">No optional module required</option>{% for code, label in modules.items() %}<option value="{{ code }}" {% if manual.required_module == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% endif %}
+    {% if not core %}
+    <fieldset id="manual-readers">
+      <legend>Selected readers</legend>
+      <p>Reader selection does not activate a module or grant access to its operating screens.</p>
+      {% for user in users %}<label><input type="checkbox" name="reader_ids" value="{{ user.id }}" {% if user.id in selected_ids %}checked{% endif %}> {{ user.full_name }} — {{ user.email }} ({{ user.roles|map(attribute='name')|join(', ') }})</label>{% else %}<p>No other eligible active users.</p>{% endfor %}
+    </fieldset>
+    {% endif %}
+    <div class="button-row"><button class="btn" type="submit">Save reader access</button><a class="btn secondary" href="{{ url_for('manuals.manual_detail', manual_id=manual.id) }}">Cancel</a></div>
+  </form>
+</section>
+{% if not core and not is_territory %}<script>
+const audience = document.getElementById('audience');
+const readers = document.getElementById('manual-readers');
+function updateReaders() { readers.disabled = audience.value !== 'selected'; readers.hidden = readers.disabled; }
+audience.addEventListener('change', updateReaders); updateReaders();
+</script>{% endif %}
+{% endblock %}

@@ -19,6 +19,12 @@ user_roles = db.Table(
     db.Column("role_id", db.Integer, db.ForeignKey("roles.id"), primary_key=True),
 )
 
+manual_readers = db.Table(
+    "mff_manual_readers",
+    db.Column("manual_id", db.Integer, db.ForeignKey("mff_manuals.id"), primary_key=True),
+    db.Column("user_id", db.Integer, db.ForeignKey("users.id"), primary_key=True),
+)
+
 
 user_franchises = db.Table(
     "user_franchises",
@@ -937,6 +943,10 @@ class MFFManual(db.Model):
     title = db.Column(db.String(255), nullable=False, index=True)
     confidentiality_note = db.Column(db.String(500), default="Confidential - internal use only")
     created_at = db.Column(db.DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    removed_at = db.Column(db.DateTime, nullable=True)
+    audience = db.Column(db.String(24), nullable=False, default="all", server_default="all")
+    required_module = db.Column(db.String(80), nullable=True)
+    readers = db.relationship("User", secondary=manual_readers, lazy="selectin")
 
 class MFFManualVersion(db.Model):
     __tablename__ = "mff_manual_versions"
