@@ -1,0 +1,19 @@
+{% macro diagnostic_link(message, snapshot) -%}
+    {% set text = message|string %}
+    {% set issue = text|lower %}
+    {% if issue == 'missing franchise' or not snapshot.franchise %}
+        {% set target = url_for('admin.data_integrity') %}
+        {% set action = 'Review franchise data integrity' %}
+    {% elif 'agreement' in issue %}
+        {% set target = url_for('franchise.details', franchise_id=snapshot.franchise_id, _anchor='agreement-card') %}
+        {% set action = 'Review this franchise agreement' %}
+    {% elif 'scale' in issue or 'bracket' in issue or 'percentage' in issue %}
+        {% set scale_id = snapshot.franchise_id if issue == 'missing royalty scale' else (snapshot.scale_source_franchise_id or snapshot.franchise_id) %}
+        {% set target = url_for('franchise.details', franchise_id=scale_id, _anchor='royalty-scale-card') %}
+        {% set action = 'Review royalty scale: ' ~ (snapshot.scale_source_franchise_name if scale_id != snapshot.franchise_id else snapshot.franchise.business_name) %}
+    {% else %}
+        {% set target = url_for('franchise.details', franchise_id=snapshot.franchise_id) %}
+        {% set action = 'Review this franchise profile' %}
+    {% endif %}
+    <a class="royalty-diagnostic-link" href="{{ target }}" title="{{ action }}">{{ text }}</a>
+{%- endmacro %}

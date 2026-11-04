@@ -4,8 +4,9 @@ from flask_login import login_required, current_user
 
 from app.extensions import db
 from app.franchise_context import set_selected_franchise, exit_franchise_view_mode, is_privileged_user, get_accessible_franchises
-from app.models import MonthlyFigure, User, user_franchises
+from app.models import User, user_franchises
 from types import SimpleNamespace
+from app.franchise_activity import previous_periods, monthly_figure_has_data, recent_franchise_activity
 
 
 dashboard_bp = Blueprint("dashboard", __name__, url_prefix="/dashboard")
@@ -25,36 +26,6 @@ def permission_required(code):
             return func(*args, **kwargs)
         return wrapper
     return decorator
-
-
-def previous_periods(year, month, count=6):
-    periods = []
-    y, m = year, month
-    for _ in range(count):
-        periods.append((y, m))
-        m -= 1
-        if m < 1:
-            m = 12
-            y -= 1
-    return set(periods)
-
-
-def monthly_figure_has_data(figure):
-    money_fields = [
-        "funeral_receipts", "claim_receipts", "society_receipts", "cash_sales",
-        "tombstone_receipts", "obo_service_receipts", "insurance_receipts",
-        "insurance_payover", "admin_fee", "gross_turnover", "gross_revenue",
-        "royalty_amount",
-    ]
-    number_fields = ["insurance_joinings", "mf_files", "number_of_funerals", "number_of_policies", "number_of_claims"]
-    for field in money_fields:
-        if getattr(figure, field, 0) or 0:
-            return True
-    for field in number_fields:
-        if getattr(figure, field, 0) or 0:
-            return True
-    return False
-
 
 
 def role_names(user):
@@ -113,29 +84,12 @@ def find_linked_franchise_group(selected_franchise=None):
     return SimpleNamespace(user=user, franchises=linked, branch_names=[franchise.business_name or "Unnamed Franchise" for franchise in linked])
 
 def split_franchises_by_recent_data(franchises):
-    latest = db.session.query(MonthlyFigure.year, MonthlyFigure.month).order_by(
-        MonthlyFigure.year.desc(), MonthlyFigure.month.desc()
-    ).first()
-    if not latest:
-        return [], list(franchises), "No monthly figures imported yet"
-
-    recent_periods = previous_periods(latest.year, latest.month, 6)
-    franchise_ids = [franchise.id for franchise in franchises]
-    if not franchise_ids:
-        return [], [], f"Last 6 months ending {latest.year}-{latest.month:02d}"
-
-    figures = MonthlyFigure.query.filter(MonthlyFigure.franchise_id.in_(franchise_ids)).all()
-    active_ids = {
-        figure.franchise_id
-        for figure in figures
-        if (figure.year, figure.month) in recent_periods and monthly_figure_has_data(figure)
-    }
+    active_ids, label = recent_franchise_activity([franchise.id for franchise in franchises])
 
     active = [franchise for franchise in franchises if franchise.id in active_ids]
     inactive = [franchise for franchise in franchises if franchise.id not in active_ids]
     active.sort(key=lambda item: item.business_name or "")
     inactive.sort(key=lambda item: item.business_name or "")
-    label = f"Last 6 months ending {latest.year}-{latest.month:02d}"
     return active, inactive, label
 
 
