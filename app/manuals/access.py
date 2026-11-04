@@ -6,7 +6,7 @@ OWNER_EMAIL = "wjm@martinsdirect.com"
 MODULES = {"attendance:view": "Attendance", "heat_map:view": "Heat Map",
            "insurance_app:view": "Insurance Applications", "insurance_claims:view": "Insurance Claims"}
 AUDIENCES = {"all": "All users with Manuals access", "head_office": "Head Office only",
-             "selected": "Selected people and the system owner"}
+             "selected": "Selected people and the system owner", "module": "Automatic — active module users"}
 
 
 def identity(user):
@@ -43,7 +43,7 @@ def defaults(title):
     code = next((code for word, code in [("attendance", "attendance:view"), ("heat map", "heat_map:view"),
                  ("insurance application", "insurance_app:view"), ("insurance sales", "insurance_app:view"),
                  ("insurance claim", "insurance_claims:view")] if word in text), None)
-    audience = "selected" if territory(title) else "head_office" if "administrator" in text else "all"
+    audience = "selected" if territory(title) else "module" if code else "head_office" if "administrator" in text else "all"
     return {"audience": audience, "required_module": None if core_module(title) else code}
 
 
@@ -57,13 +57,16 @@ def can_read(user, manual):
         return True
     selected = any(reader.id == identity(user).id for reader in manual.readers)
     if territory(manual.title):
-        allowed = head_office(user) and selected
+        return bool(head_office(user) and selected)
+    required = defaults(manual.title)["required_module"] or manual.required_module
+    if required:
+        # A live trial or paid activation is sufficient; no named-reader grant.
+        return bool(user.has_permission(required))
     else:
         allowed = (manual.audience == "all" or
                    (manual.audience == "head_office" and head_office(user)) or
                    (manual.audience == "selected" and selected))
-    required = defaults(manual.title)["required_module"] or manual.required_module
-    return bool(allowed and (not required or user.has_permission(required)))
+    return bool(allowed)
 
 
 def can_manage(user):
@@ -75,6 +78,7 @@ def description(manual):
         return "Compulsory — all franchise users"
     if territory(manual.title):
         return "Owner and selected Head Office employees"
-    label = AUDIENCES.get(manual.audience, "Restricted")
     required = defaults(manual.title)["required_module"] or manual.required_module
-    return label + (" — requires " + MODULES.get(required, "module access") if required else "")
+    if required:
+        return "Automatic — follows active " + MODULES.get(required, "module") + " access"
+    return AUDIENCES.get(manual.audience, "Restricted")

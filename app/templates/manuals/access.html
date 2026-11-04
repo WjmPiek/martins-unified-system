@@ -1,35 +1,80 @@
 {% extends "base.html" %}
+{% block head_extra %}<link rel="stylesheet" href="{{ asset_url('css/manual-access.css') }}">{% endblock %}
 {% block app_content %}
-<section class="form-section-card">
+<section class="form-section-card manual-permissions-page">
   <h1>Manual reader access</h1>
   <h2>{{ manual.title }}</h2>
   <p>Your account always retains access. Only wjm@martinsdirect.com can change these settings or remove manuals.</p>
-  {% if core %}<p>Module {{ core }} is compulsory. All franchise users with Manuals access must be able to read it.</p>{% endif %}
-  {% if is_territory %}<p>The Territory Manual is limited to your account and the Head Office employees you select below.</p>{% endif %}
-  <form method="post">
+  {% if core %}<p>Module {{ core }} is compulsory for every franchise user. No reader selection is needed.</p>{% endif %}
+  {% if is_territory %}<p>Your account always has access. Select only the Head Office users who may also read the Territory Manual. Franchise users cannot be selected.</p>{% endif %}
+  <form method="post" class="manual-access-form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label for="audience">Who may read this manual?</label>
-    {% if core %}<input type="hidden" name="audience" value="all"><p>All users with Manuals access</p>
-    {% elif is_territory %}<input type="hidden" name="audience" value="selected"><p>Selected Head Office employees and the system owner</p>
-    {% else %}<select name="audience" id="audience">{% for value, label in audiences.items() %}<option value="{{ value }}" {% if manual.audience == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% endif %}
-    <label for="required-module">Module activation required</label>
-    {% if core or is_territory %}<input type="hidden" name="required_module" value=""><p>No optional activation requirement.</p>
-    {% elif inferred_module %}<input type="hidden" name="required_module" value="{{ inferred_module }}"><p>{{ modules[inferred_module] }} must be available for the selected franchise-holder profile. This requirement cannot be removed.</p>
-    {% else %}<select name="required_module" id="required-module"><option value="">No optional module required</option>{% for code, label in modules.items() %}<option value="{{ code }}" {% if manual.required_module == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select>{% endif %}
-    {% if not core %}
-    <fieldset id="manual-readers">
+    <div class="manual-access-field">
+      <label for="audience">Who may read this manual?</label>
+      {% if core %}<input type="hidden" name="audience" value="all"><p>All users with Manuals access</p>
+      {% elif is_territory %}<input type="hidden" name="audience" value="selected"><p>Selected Head Office employees and the system owner</p>
+      {% elif inferred_module %}<input type="hidden" name="audience" value="module"><p><strong>Automatic — follows {{ modules[inferred_module] }} activation</strong></p><p class="manual-field-help">No readers need to be selected. The manual appears during an active trial or paid activation, disappears when the trial expires or access is deactivated, and reappears after reactivation.</p>
+      {% else %}<select name="audience" id="audience" aria-describedby="audience-help">{% for value, label in audiences.items() %}<option value="{{ value }}" {% if manual.audience == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><p class="manual-field-help" id="audience-help">For every franchise holder, choose All users with Manuals access. For one holder or particular staff, choose Selected people and tick their names. For Head Office staff only, choose Head Office only.</p><input type="hidden" name="audience" id="automatic-audience" value="module" disabled>{% endif %}
+    </div>
+    <div class="manual-access-field">
+      <label for="required-module">Module activation required</label>
+      {% if core or is_territory %}<input type="hidden" name="required_module" value=""><p>No optional activation requirement.</p>
+      {% elif inferred_module %}<input type="hidden" name="required_module" value="{{ inferred_module }}"><p>{{ modules[inferred_module] }} — checked automatically for the selected holder/profile.</p>
+      {% else %}<select name="required_module" id="required-module" aria-describedby="module-help"><option value="">No optional module required</option>{% for code, label in modules.items() %}<option value="{{ code }}" {% if manual.required_module == code %}selected{% endif %}>{{ label }}</option>{% endfor %}</select><p class="manual-field-help" id="module-help">For a general manual, choose No optional module required. For an optional module guide, choose its module: access will then follow activation automatically, including the trial period. No individual reader selection is needed.</p>{% endif %}
+    </div>
+    {% if not core and not inferred_module %}
+    <fieldset id="manual-readers" class="manual-reader-fieldset">
       <legend>Selected readers</legend>
-      <p>Reader selection does not activate a module or grant access to its operating screens.</p>
-      {% for user in users %}<label><input type="checkbox" name="reader_ids" value="{{ user.id }}" {% if user.id in selected_ids %}checked{% endif %}> {{ user.full_name }} — {{ user.email }} ({{ user.roles|map(attribute='name')|join(', ') }})</label>{% else %}<p>No other eligible active users.</p>{% endfor %}
+      <p class="manual-field-help">{% if is_territory %}Tick the Head Office users who may read the Territory Manual. Your owner account always keeps access.{% else %}Tick the franchise holders or Head Office staff who may read this manual.{% endif %} Reading a manual does not grant access to its operating screens.</p>
+      <label class="manual-reader-option manual-select-all"><input type="checkbox" id="reader-select-all" {% if not users %}disabled{% endif %}><span class="manual-reader-text"><strong>Select all listed readers</strong><span class="manual-reader-details">You can untick individual people afterwards.</span></span></label>
+      <div class="manual-reader-list">
+      {% for user in users %}<label class="manual-reader-option"><input type="checkbox" name="reader_ids" value="{{ user.id }}" {% if user.id in selected_ids %}checked{% endif %}><span class="manual-reader-text"><strong>{{ user.full_name }}</strong><span class="manual-reader-details">{{ user.email }} · {{ user.roles|map(attribute='name')|join(', ') }}</span></span></label>{% else %}<p>No other eligible active users.</p>{% endfor %}
+      </div>
     </fieldset>
     {% endif %}
-    <div class="button-row"><button class="btn" type="submit">Save reader access</button><a class="btn secondary" href="{{ url_for('manuals.manual_detail', manual_id=manual.id) }}">Cancel</a></div>
+    <div class="button-row manual-access-actions"><button class="btn" type="submit">Save reader access</button><a class="btn secondary" href="{{ url_for('manuals.manual_detail', manual_id=manual.id) }}">Cancel</a></div>
   </form>
 </section>
-{% if not core and not is_territory %}<script>
-const audience = document.getElementById('audience');
+{% if not core and not inferred_module %}<script>
 const readers = document.getElementById('manual-readers');
-function updateReaders() { readers.disabled = audience.value !== 'selected'; readers.hidden = readers.disabled; }
-audience.addEventListener('change', updateReaders); updateReaders();
+const selectAllReaders = document.getElementById('reader-select-all');
+const readerCheckboxes = Array.from(readers.querySelectorAll('input[name="reader_ids"]'));
+function updateSelectAll() {
+  const checked = readerCheckboxes.filter(input => input.checked).length;
+  selectAllReaders.checked = readerCheckboxes.length > 0 && checked === readerCheckboxes.length;
+  selectAllReaders.indeterminate = checked > 0 && checked < readerCheckboxes.length;
+}
+selectAllReaders.addEventListener('change', () => {
+  readerCheckboxes.forEach(input => { input.checked = selectAllReaders.checked; });
+  updateSelectAll();
+});
+readerCheckboxes.forEach(input => input.addEventListener('change', updateSelectAll));
+updateSelectAll();
+{% if not is_territory %}
+const audience = document.getElementById('audience');
+const moduleChoice = document.getElementById('required-module');
+const automaticAudience = document.getElementById('automatic-audience');
+const audienceHelp = document.getElementById('audience-help');
+const guidance = {
+  all: 'Every franchise holder and Head Office user with Manuals access may read this manual.',
+  head_office: 'Head Office staff may read it. Franchise holders will not see it.',
+  selected: 'Tick the particular franchise holders or Head Office staff below. Your owner account keeps access.',
+  module: 'Access is automatic while the matching module is active, including its trial. Expiry or deactivation removes access. No readers need to be selected.'
+};
+function updateReaders() {
+  const automatic = moduleChoice.value !== '';
+  if (automatic) audience.value = 'module';
+  else if (audience.value === 'module') audience.value = 'selected';
+  audience.disabled = automatic;
+  automaticAudience.disabled = !automatic;
+  audience.querySelector('option[value="module"]').disabled = !automatic;
+  readers.disabled = automatic || audience.value !== 'selected';
+  readers.hidden = readers.disabled;
+  audienceHelp.textContent = guidance[audience.value];
+}
+audience.addEventListener('change', updateReaders);
+moduleChoice.addEventListener('change', updateReaders);
+updateReaders();
+{% endif %}
 </script>{% endif %}
 {% endblock %}

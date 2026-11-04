@@ -308,3 +308,60 @@ def test_owner_cannot_disable_required_optional_module_gate(app, tmp_path):
     assert controller.post(url, data={"csrf_token": token, "audience": "all", "required_module": ""}).status_code == 400
     assert controller.post(url, data={"csrf_token": token, "audience": "all", "required_module": "attendance:view"}).status_code == 302
     assert m.required_module == "attendance:view"
+
+
+def test_optional_guides_need_no_reader_grant_even_for_legacy_private_uploads(app, tmp_path):
+    holder = user("holder@example.com", role="Franchise User", manage=False)
+    m = manual(tmp_path, title="Attendance Module Manual", audience="selected")
+    client = login(app, holder)
+    assert not m.readers
+    assert client.get(f"/manuals/{m.id}").status_code == 404
+    grant = UserModuleAccess(user=holder, module_code="attendance:view", is_enabled=True,
+                             trial_expires_at=datetime.now(timezone.utc)+timedelta(days=30))
+    db.session.add(grant); db.session.commit()
+    assert client.get(f"/manuals/{m.id}").status_code == 200
+    assert m.title.encode() in client.get("/manuals/library").data
+    grant.trial_expires_at = datetime.now(timezone.utc)-timedelta(seconds=1); db.session.commit()
+    assert m.title.encode() not in client.get("/manuals/library").data
+    assert client.post("/manuals/search-pdfs", json={"query":"unique-manual-search"}).get_json()["results"] == []
+
+
+def test_new_optional_upload_is_automatically_available_to_activated_holder(app, tmp_path):
+    owner = user("wjm@martinsdirect.com")
+    holder = user("holder@example.com", role="Franchise User", manage=False)
+    source = manual(tmp_path)
+    client = login(app, owner)
+    pdf = Path(source.versions[0].storage_path).read_bytes()
+    assert client.post("/manuals/upload", data={"title":"Attendance Module Manual", "version_label":"v1", "file":(BytesIO(pdf),"guide.pdf")}).status_code == 302
+    uploaded = MFFManual.query.filter_by(title="Attendance Module Manual").one()
+    assert uploaded.audience == "module" and not uploaded.readers
+    db.session.add(UserModuleAccess(user=holder,module_code="attendance:view",is_enabled=True,paid_activated_at=datetime.now(timezone.utc)))
+    db.session.commit()
+    assert login(app,holder).get(f"/manuals/{uploaded.id}").status_code == 200
+    page=client.get(f"/manuals/{uploaded.id}/access")
+    assert b'No readers need to be selected' in page.data
+    assert b'name="reader_ids"' not in page.data
+
+
+def test_custom_module_link_switches_to_automatic_without_people(app,tmp_path):
+    owner=user("wjm@martinsdirect.com")
+    m=manual(tmp_path,title="Optional operating instructions",audience="selected")
+    client=login(app,owner);url=f"/manuals/{m.id}/access";token=csrf(client,url)
+    assert client.post(url,data={"csrf_token":token,"audience":"selected","required_module":"heat_map:view"}).status_code==302
+    assert m.audience=="module" and not m.readers
+
+
+def test_automatic_access_migration_preserves_territory_grants():
+    path=Path(__file__).parents[1]/"migrations/versions/v141_automatic_manual_module_access.py"
+    spec=importlib.util.spec_from_file_location("automatic_manual_migration",path)
+    migration=importlib.util.module_from_spec(spec);spec.loader.exec_module(migration)
+    engine=sa.create_engine("sqlite:///:memory:")
+    with engine.begin() as connection:
+        connection.exec_driver_sql("CREATE TABLE mff_manuals (id INTEGER PRIMARY KEY,title TEXT,audience TEXT,required_module TEXT)")
+        connection.exec_driver_sql("CREATE TABLE mff_manual_readers (manual_id INTEGER,user_id INTEGER)")
+        connection.exec_driver_sql("INSERT INTO mff_manuals VALUES (1,'Attendance Manual','selected','attendance:view'),(2,'Territory Manual','selected',NULL),(3,'MODULE 1','all',NULL)")
+        connection.exec_driver_sql("INSERT INTO mff_manual_readers VALUES (2,9)")
+        migration.op=Operations(MigrationContext.configure(connection));migration.upgrade()
+        assert connection.execute(sa.text("SELECT audience FROM mff_manuals WHERE id=1")).scalar()=="module"
+        assert connection.execute(sa.text("SELECT COUNT(*) FROM mff_manual_readers WHERE manual_id=2")).scalar()==1
+        assert connection.execute(sa.text("SELECT audience FROM mff_manuals WHERE id=3")).scalar()=="all"
