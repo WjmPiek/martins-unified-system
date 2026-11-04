@@ -1,4 +1,5 @@
 {% extends "base.html" %}{% block app_content %}
 <section class="section-header"><div><h1>Upload Manual</h1><p class="muted">Upload a PDF manual version. New versions become the published version.</p></div><a class="btn secondary" href="{{ url_for('manuals.library') }}">Back</a></section>
+<p>Existing manuals keep their reader access. New manuals are private to the uploader and system owner until the owner sets Reader access. Modules 1–7 are compulsory for all franchise users. Optional module manuals also require access to the matching active module.</p>
 <div class="form-section-card"><form method="post" enctype="multipart/form-data"><div class="form-grid"><label>Manual Title</label><input name="title" required><label>Version Label</label><input name="version_label" value="v1.0" required><label>PDF File</label><input type="file" name="file" accept="application/pdf,.pdf" required></div><div class="form-actions"><button class="btn" type="submit">Upload Manual</button></div></form></div>
 {% endblock %}
