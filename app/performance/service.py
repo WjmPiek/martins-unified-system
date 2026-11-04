@@ -477,6 +477,17 @@ def active_leaderboard_franchise_ids(include_inactive=False):
         query = query.filter(Franchise.is_performance_active == True)
     return [franchise.id for franchise in query.all()]
 
+
+def graph_accessible_franchise_ids():
+    """Keep branches with dashboard activity visible in their authorised graph scope."""
+    from app.franchise_activity import recent_franchise_activity
+    candidates = accessible_franchise_ids(include_inactive=True)
+    if not candidates:
+        return []
+    configured_active = set(filter_active_franchise_ids(candidates))
+    recently_active, _ = recent_franchise_activity(candidates)
+    return [fid for fid in candidates if fid in configured_active or fid in recently_active]
+
 def previous_periods_including(month, year, count=3):
     periods = []
     m, y = month, year
@@ -1726,8 +1737,8 @@ def _bulk_graph_payload(franchise_ids, metric_key, month, year, periods):
         "cache_status": "rebuilt",
     }
 
-def graph_engine_payload_for_franchises(franchise_ids, metric_key, month, year, periods=12, mode='growth_bracket', growth_percent=DEFAULT_GROWTH_PERCENT, allow_rebuild=False):
-    franchise_ids = filter_active_franchise_ids(franchise_ids or [])
+def graph_engine_payload_for_franchises(franchise_ids, metric_key, month, year, periods=12, mode='growth_bracket', growth_percent=DEFAULT_GROWTH_PERCENT, allow_rebuild=False, *, include_inactive=False):
+    franchise_ids = filter_active_franchise_ids(franchise_ids or [], include_inactive=include_inactive)
     cache_key = build_cache_key(
         'graph_aggregate',
         month=month,

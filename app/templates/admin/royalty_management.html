@@ -1,5 +1,14 @@
 {% extends "base.html" %}
+{% from "admin/_royalty_diagnostic_links.html" import diagnostic_link %}
 {% block title %}Royalty Management{% endblock %}
+{% block head_extra %}
+<style>
+.royalty-diagnostic-list{margin:4px 0 10px;padding-left:18px}
+.royalty-diagnostic-list li{margin:3px 0}
+.royalty-diagnostic-link{text-decoration:underline;text-underline-offset:3px}
+.royalty-diagnostic-link:focus-visible{outline:2px solid #6b4ba0;outline-offset:3px}
+</style>
+{% endblock %}
 {% block app_content %}
 <div class="royalty-management" data-section-page>
 <section class="page-shell">
@@ -103,8 +112,14 @@
                     <td>{{ snap.target_amount|rand }}</td>
                     <td class="royalty-diagnostics">
                         {% set diag = snap.diagnostics %}
-                        {% if diag.blocking_errors %}<strong>Errors:</strong> {{ diag.blocking_errors|join('; ') }}<br>{% endif %}
-                        {% if diag.warnings %}<strong>Warnings:</strong> {{ diag.warnings|join('; ') }}<br>{% endif %}
+                        {% if diag.blocking_errors %}
+                        <strong>Errors:</strong>
+                        <ul class="royalty-diagnostic-list">{% for message in diag.blocking_errors %}<li>{{ diagnostic_link(message, snap) }}</li>{% endfor %}</ul>
+                        {% endif %}
+                        {% if diag.warnings %}
+                        <strong>Warnings:</strong>
+                        <ul class="royalty-diagnostic-list">{% for message in diag.warnings %}<li>{{ diagnostic_link(message, snap) }}</li>{% endfor %}</ul>
+                        {% endif %}
                         <small>Scale: {{ snap.scale_source_franchise_name or 'n/a' }}</small>
                     </td>
                 </tr>

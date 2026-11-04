@@ -16,6 +16,7 @@ from app.performance.service import (
     PERFORMANCE_METRICS,
     TARGET_MODES,
     accessible_franchise_ids,
+    graph_accessible_franchise_ids,
     active_leaderboard_franchise_ids,
     attach_movement,
     dashboard_snapshot,
@@ -281,7 +282,7 @@ def _graphs_scope(args):
     month, year = selected_period_from_request(args)
     mode = request_mode()
     growth = request_growth()
-    ids = accessible_franchise_ids()
+    ids = graph_accessible_franchise_ids()
     selected_province = (args.get("province") or "").strip()
     province_options = []
 
@@ -388,12 +389,11 @@ def graphs_data():
     mode = scope["mode"]
     growth = scope["growth"]
 
-    # Cache hits are a single indexed lookup. A miss uses the prepared
-    # performance_results table and one grouped query; raw monthly figures are
-    # never scanned from this browser request.
+    # Cache hits use an indexed lookup. A miss uses prepared performance rows
+    # with bounded monthly-figure fallbacks for older imports.
 
     if scope["is_combined_view"]:
-        graph_data = graph_engine_payload_for_franchises(ids, metric_key, month, year, periods, mode, growth, allow_rebuild=True) if ids else None
+        graph_data = graph_engine_payload_for_franchises(ids, metric_key, month, year, periods, mode, growth, allow_rebuild=True, include_inactive=True) if ids else None
     else:
         franchise_id = scope["selected_franchise_id"]
         graph_data = graph_engine_payload(franchise_id, metric_key, month, year, periods, mode, growth, allow_rebuild=True) if franchise_id else None
