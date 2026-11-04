@@ -1,6 +1,7 @@
 {% extends "base.html" %}
+{% block head_extra %}<link rel="stylesheet" href="{{ asset_url('css/manual-access.css') }}">{% endblock %}
 {% block app_content %}
-<section class="form-section-card">
+<section class="form-section-card manual-permissions-page">
   <h1>Remove manual</h1>
   <h2>{{ manual.title }}</h2>
   <p>This removes this manual and all its versions from the library, PDF search and document links. Linked indexes will also be hidden. Uploaded documents and acknowledgement history are retained for audit.</p>
@@ -13,8 +14,8 @@
   </div>
   <form method="post" action="{{ url_for('manuals.remove_manual', manual_id=manual.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label><input type="checkbox" name="confirm_remove" value="{{ manual.id }}" required> I confirm that I want to remove {{ manual.title }}.</label>
-    <div class="button-row">
+    <label class="manual-reader-option"><input type="checkbox" name="confirm_remove" value="{{ manual.id }}" required><span class="manual-reader-text">I confirm that I want to remove {{ manual.title }}.</span></label>
+    <div class="button-row manual-access-actions">
       <button class="btn danger" type="submit">Remove manual</button>
       <a class="btn secondary" href="{{ url_for('manuals.manual_detail', manual_id=manual.id) }}">Cancel</a>
     </div>

@@ -280,12 +280,12 @@ def upload_manual():
         else:
             policy = access.defaults(title)
             # New optional documents stay private until the owner chooses readers.
-            if not access.core_module(title):
+            if not access.core_module(title) and not policy["required_module"]:
                 policy["audience"] = "selected"
             if access.territory(title) and not access.is_owner(current_user):
                 abort(403)
             manual=MFFManual(title=title, confidentiality_note="Confidential - internal use only", **policy)
-            if not access.is_owner(current_user):
+            if not access.is_owner(current_user) and policy["audience"] == "selected":
                 manual.readers.append(access.identity(current_user))
         db.session.add(manual); db.session.flush()
         if MFFManualVersion.query.filter_by(manual_id=manual.id, version_label=version).first():
@@ -377,6 +377,12 @@ def manual_access(manual_id):
             abort(400, "Choose a valid audience and module.")
         if inferred_module and module != inferred_module:
             abort(400, "This module manual must follow the matching module activation.")
+        if module:
+            if selected:
+                abort(400, "Module manuals follow activation automatically; do not select individual readers.")
+            audience = "module"
+        elif audience == "module":
+            abort(400, "Choose a module for automatic module access.")
         if core and (audience != "all" or module or selected):
             abort(400, "Modules 1-7 must remain available to all franchise users.")
         if is_territory and (audience != "selected" or module):
