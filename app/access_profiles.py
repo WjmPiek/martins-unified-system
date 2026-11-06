@@ -4,6 +4,7 @@ from flask_login import UserMixin
 from functools import cached_property
 from app.extensions import db
 from app.models import FRANCHISE_SCOPED_ROLE_NAMES, Franchise, Role, User, UserAccessProfile
+from app.attendance_groups import attendance_group_branches
 
 
 def active(user):
@@ -28,12 +29,12 @@ def attendance_holder_for(user, branch=None):
     approved = {choice['principal'].id:choice['principal'] for choice in choices(identity)}
     approved[principal.id] = principal
     owners = [owner for owner in approved.values() if owner.has_role('Franchise User') and not office_roles(owner)
-              and branch.id in {item.id for item in owner.assigned_franchises}]
-    grouped = [owner for owner in owners if len(owner.assigned_franchises)>1]
+              and branch.id in {item.id for item in attendance_group_branches(owner)}]
+    grouped = [owner for owner in owners if len(attendance_group_branches(owner))>1]
     if not grouped:
         return principal
     roots = [owner for owner in grouped if not any(
-        owner.assigned_franchise_id() in {item.id for item in other.assigned_franchises}
+        owner.assigned_franchise_id() in {item.id for item in attendance_group_branches(other)}
         and owner.assigned_franchise_id()!=other.assigned_franchise_id()
         for other in grouped if other.id!=owner.id)]
     if len(roots)!=1:
