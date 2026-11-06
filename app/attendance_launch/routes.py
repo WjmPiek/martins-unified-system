@@ -9,6 +9,7 @@ from itsdangerous import URLSafeTimedSerializer
 
 from app.franchise_context import get_accessible_franchises
 from app.access_profiles import attendance_holder_for
+from app.attendance_groups import attendance_group_branches
 
 
 attendance_launch_bp = Blueprint("attendance_launch", __name__)
@@ -105,9 +106,13 @@ def launch():
     branch_scope = []
     business_profile = None
     if 'franchise user' in _role_names():
+        try:
+            attendance_branches=attendance_group_branches(principal)
+        except ValueError as exc:
+            abort(409,description=str(exc))
         branch_scope = [dict(id=branch.id, name=_franchise_name(branch), vat_number=branch.vat_number or '')
-                        for branch in principal.assigned_franchises if _franchise_name(branch)]
-        primary = next((branch for branch in principal.assigned_franchises if branch.id == principal.assigned_franchise_id()), None)
+                        for branch in attendance_branches if _franchise_name(branch)]
+        primary = next((branch for branch in attendance_branches if branch.id == principal.assigned_franchise_id()), None)
         if primary:
             business_profile = _business_profile(primary)
     serializer = URLSafeTimedSerializer(secret, salt="martins-attendance-launch-v1")

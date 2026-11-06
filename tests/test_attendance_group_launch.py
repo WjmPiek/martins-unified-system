@@ -1,4 +1,6 @@
 from types import SimpleNamespace
+import json
+import pytest
 from urllib.parse import urlparse, parse_qs
 from flask import Flask
 from itsdangerous import URLSafeTimedSerializer
@@ -86,7 +88,8 @@ def test_ambiguous_overlapping_holder_groups_are_not_guessed(monkeypatch):
         access_profiles.attendance_holder_for(user,b)
 
 
-def test_linked_branch_profile_uses_approved_holder_attendance_without_head_office_access(app,monkeypatch):
+@pytest.mark.parametrize('explicit_group',[False,True])
+def test_linked_branch_profile_uses_approved_holder_attendance_without_head_office_access(app,monkeypatch,explicit_group):
     from test_access_profiles import setup_accounts,sign_in,call
     from app.access_profiles import choices,grant_profile,ProfileUser
     from app.extensions import db
@@ -98,6 +101,9 @@ def test_linked_branch_profile_uses_approved_holder_attendance_without_head_offi
     db.session.add(secondary);db.session.flush()
     db.session.execute(user_franchises.update().where(user_franchises.c.user_id==secondary.id).values(is_primary=True))
     grant=grant_profile(identity,branches[1],secondary,identity.id)
+    if explicit_group:
+        owner.assigned_franchises=[branches[0]]
+        monkeypatch.setenv('ATTENDANCE_HOLDER_BRANCH_GROUPS',json.dumps({str(owner.id):[b.id for b in branches]}))
     start_trial(owner);db.session.commit()
     choice=next(c for c in choices(identity) if c['profile'] and c['profile'].id==grant.id)
     profile=ProfileUser(identity,choice)
@@ -121,6 +127,18 @@ def test_linked_branch_profile_uses_approved_holder_attendance_without_head_offi
     payload=URLSafeTimedSerializer('test-only-launch-secret',salt='martins-attendance-launch-v1').loads(token)
     assert payload['email']==owner.email and payload['active_franchise_id']==branches[1].id
     assert payload['is_admin'] is False
+    assert {b['id'] for b in payload['branch_scope']}=={b.id for b in (branches if explicit_group else branches[:2])}
+    assert {b.id for b in owner.assigned_franchises}=={b.id for b in (branches[:1] if explicit_group else branches[:2])}
     query=parse_qs(urlparse(response.location).query)
     assert query['embedded']==['1']
     assert response.headers['Cache-Control']=='no-store'
+
+
+@pytest.mark.parametrize('configured',['invalid','[]','{"OWNER":[999999]}','{"OWNER":[true]}'])
+def test_invalid_attendance_group_fails_closed(app,monkeypatch,configured):
+    from test_access_profiles import setup_accounts
+    from app.attendance_groups import attendance_group_branches
+    _,owner,_,_=setup_accounts(app)
+    monkeypatch.setenv('ATTENDANCE_HOLDER_BRANCH_GROUPS',configured.replace('OWNER',str(owner.id)))
+    with pytest.raises(ValueError,match='Head Office'):
+        attendance_group_branches(owner)
